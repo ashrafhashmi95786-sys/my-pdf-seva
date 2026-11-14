@@ -6,7 +6,7 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import { Document, Packer, Paragraph, TextRun } from "docx";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import { UploadCloud, FileText, Files, Scissors, RotateCw, Image as ImageIcon, ShieldCheck, Zap, LockKeyhole, ArrowRight, CheckCircle2, X, Download, Menu, Sparkles, ChevronDown } from "lucide-react";
 
