@@ -45,7 +45,7 @@ export default function Home() {
   const reset = () => { setFiles([]); setMessage(""); setResult(null); };\n  const saveResult = (blob: Blob, name: string, type: string) => { if (result?.url) URL.revokeObjectURL(result.url); setResult({ blob, name, type, url: URL.createObjectURL(blob) }); };
   const download = (bytes: Uint8Array, name: string) => {
     const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
+    saveResult(blob, name, "application/pdf");
   };
   const runTool = async () => {
     if (!files.length) { setMessage("Upload at least one file to continue."); return; }
