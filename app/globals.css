@@ -198,3 +198,16 @@
   .previewModalBody iframe{min-height:240px}
   .uploadedPreviewLabel{align-items:flex-start;flex-direction:column;gap:4px}
 }
+
+
+/* File-first tool flow */
+.fileSelectStart{max-width:860px;margin:28px auto 0}
+.selectOnlyBody{padding:34px 28px 28px;text-align:center}
+.selectFileButton{max-width:520px;min-height:190px;margin:0 auto;border:2px dashed #8bb8ed!important;background:linear-gradient(145deg,#f3f8ff,#fff)!important;cursor:pointer}
+.selectFileButton:hover{border-color:#2563eb!important;background:#edf5ff!important}
+.selectFileButton input,.secondarySelectBtn input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+.selectPrivacy{justify-content:center;margin-top:20px}
+.fileSelectToolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;color:#294563;font-size:13px;font-weight:700}
+.secondarySelectBtn{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:9px 14px;border:1px solid #cbdcf0;border-radius:9px;background:#fff;color:#245ca8;font-size:12px;font-weight:800;cursor:pointer}
+.secondarySelectBtn:hover{background:#f1f7ff}
+@media(max-width:640px){.selectOnlyBody{padding:24px 14px}.selectFileButton{min-height:160px}.fileSelectToolbar{align-items:flex-start;flex-direction:column}}
