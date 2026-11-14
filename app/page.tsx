@@ -6,9 +6,11 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import { UploadCloud, FileText, Files, Scissors, RotateCw, Image as ImageIcon, ShieldCheck, Zap, LockKeyhole, ArrowRight, CheckCircle2, X, Download, Menu, Sparkles, ChevronDown } from "lucide-react";
 
-type ToolId = "merge" | "split" | "rotate" | "jpg" | "word" | "excel";
+type ToolId = "merge" | "split" | "rotate" | "jpg" | "word" | "excel" | "pdfword" | "pdfexcel";
 type PdfFile = { file: File; id: string };
 const tools = [
   { id: "merge" as ToolId, name: "Merge PDF", desc: "Combine multiple PDFs into one organized file.", icon: Files, tag: "Most popular" },
@@ -16,7 +18,9 @@ const tools = [
   { id: "rotate" as ToolId, name: "Rotate PDF", desc: "Fix sideways pages in just a few clicks.", icon: RotateCw, tag: "Useful" },
   { id: "jpg" as ToolId, name: "JPG to PDF", desc: "Turn your images into a shareable PDF.", icon: ImageIcon, tag: "Image tools" },
   { id: "word" as ToolId, name: "Word to PDF", desc: "Convert DOCX documents into PDF files.", icon: FileText, tag: "Document" },
-  { id: "excel" as ToolId, name: "Excel to PDF", desc: "Export spreadsheet tabs as a readable PDF.", icon: Files, tag: "Spreadsheet" }
+  { id: "excel" as ToolId, name: "Excel to PDF", desc: "Export spreadsheet tabs as a readable PDF.", icon: Files, tag: "Spreadsheet" },
+  { id: "pdfword" as ToolId, name: "PDF to Word", desc: "Extract selectable PDF text into an editable DOCX file.", icon: FileText, tag: "Convert" },
+  { id: "pdfexcel" as ToolId, name: "PDF to Excel", desc: "Extract PDF text and arrange it into spreadsheet rows.", icon: Files, tag: "Convert" }
 ];
 export default function Home() {
   const [active, setActive] = useState<ToolId>("merge");
@@ -31,7 +35,7 @@ export default function Home() {
   const addFiles = useCallback((list: FileList | null) => {
     if (!list) return;
     const incoming = Array.from(list).filter(f => active === "jpg" ? ["image/jpeg","image/png","image/webp"].includes(f.type) : active === "word" ? f.name.toLowerCase().endsWith(".docx") : active === "excel" ? /\.(xlsx|xls)$/i.test(f.name) : f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-    if (!incoming.length) { setMessage(active === "jpg" ? "Please choose JPG, PNG or WebP images." : active === "word" ? "Please choose a .docx Word document." : active === "excel" ? "Please choose an .xlsx or .xls Excel workbook." : "Please choose valid PDF files."); return; }
+    if (!incoming.length) { setMessage(active === "jpg" ? "Please choose JPG, PNG or WebP images." : active === "word" ? "Please choose a .docx Word document." : active === "excel" ? "Please choose an .xlsx or .xls Excel workbook." : "Please choose a valid PDF file."); return; }
     if (incoming.some(f => f.size > 30 * 1024 * 1024)) { setMessage("Each file must be 30 MB or smaller."); return; }
     setFiles(old => [...old, ...incoming.map(file => ({ file, id: crypto.randomUUID() }))]);
     setMessage("");
@@ -92,6 +96,62 @@ export default function Home() {
         }
         if (!renderedSheets) throw new Error("The workbook has no non-empty worksheet data.");
         pdf.save(item.file.name.replace(/\.(xlsx|xls)$/i, "") + ".pdf");
+      } else if (active === "pdfword" || active === "pdfexcel") {
+        if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
+        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(await files[0].file.arrayBuffer()), disableWorker: true });
+        const pdf = await loadingTask.promise;
+        const extracted: { page: number; y: number; x: number; text: string }[] = [];
+        for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+          const page = await pdf.getPage(pageNo);
+          const content = await page.getTextContent();
+          for (const item of content.items as any[]) {
+            if (!("str" in item) || !item.str.trim()) continue;
+            const transform = item.transform as number[];
+            extracted.push({ page: pageNo, x: transform[4], y: transform[5], text: item.str.trim() });
+          }
+        }
+        if (!extracted.length) throw new Error("No selectable text found. This may be a scanned PDF; OCR support is not available yet.");
+        const pageLines: { page: number; y: number; chunks: { x: number; text: string }[] }[] = [];
+        for (const item of extracted) {
+          let line = pageLines.find(row => row.page === item.page && Math.abs(row.y - item.y) < 3);
+          if (!line) { line = { page: item.page, y: item.y, chunks: [] }; pageLines.push(line); }
+          line.chunks.push({ x: item.x, text: item.text });
+        }
+        pageLines.sort((a,b) => a.page-b.page || b.y-a.y);
+        const lines = pageLines.map(line => ({ page: line.page, chunks: line.chunks.sort((a,b)=>a.x-b.x), text: line.chunks.sort((a,b)=>a.x-b.x).map(c=>c.text).join(" ").replace(/\\s+/g," ").trim() })).filter(line=>line.text);
+        if (active === "pdfword") {
+          const children: Paragraph[] = [];
+          let lastPage = 1;
+          for (const line of lines) {
+            if (line.page !== lastPage) { children.push(new Paragraph({ children: [new TextRun({ text: "", break: 1 })] })); lastPage = line.page; }
+            children.push(new Paragraph({ children: [new TextRun({ text: line.text })], spacing: { after: 100 } }));
+          }
+          const doc = new Document({ sections: [{ children }] });
+          const blob = await Packer.toBlob(doc);
+          const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = files[0].file.name.replace(/\\.pdf$/i,"") + ".docx"; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+        } else {
+          const rows = lines.map(line => {
+            const chunks = line.chunks;
+            if (chunks.length < 2) return [line.text];
+            const cells: string[] = [];
+            let current = chunks[0].text;
+            let previousX = chunks[0].x;
+            for (let i=1;i<chunks.length;i++) {
+              const gap = chunks[i].x - previousX;
+              if (gap > 28) { cells.push(current); current = chunks[i].text; }
+              else current += " " + chunks[i].text;
+              previousX = chunks[i].x;
+            }
+            cells.push(current);
+            return cells;
+          });
+          const sheet = XLSX.utils.aoa_to_sheet(rows);
+          const book = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(book, sheet, "PDF Data");
+          const output = XLSX.write(book, { bookType: "xlsx", type: "array" });
+          const blob = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+          const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = files[0].file.name.replace(/\\.pdf$/i,"") + ".xlsx"; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+        }
       } else if (active === "merge") {
         if (files.length < 2) throw new Error("Add at least two PDF files to merge.");
         const out = await PDFDocument.create();
@@ -121,7 +181,7 @@ export default function Home() {
     <div className="topbar"><div className="container topinner"><a className="brand" href="#"><span className="brandmark"><FileText size={22}/></span><span>My PDF <b>Seva</b></span></a><nav className={mobileMenu?"nav open":"nav"}><a href="#tools" onClick={()=>setMobileMenu(false)}>All tools</a><a href="#how" onClick={()=>setMobileMenu(false)}>How it works</a><a href="#privacy" onClick={()=>setMobileMenu(false)}>Privacy</a></nav><button className="menuBtn" onClick={()=>setMobileMenu(!mobileMenu)} aria-label="Toggle menu"><Menu/></button><a className="navCta" href="#tools">Explore tools <ArrowRight size={16}/></a></div></div>
     <section className="hero"><div className="heroGlow"/><div className="container heroGrid"><div className="heroCopy"><div className="eyebrow"><Sparkles size={14}/> YOUR EVERYDAY PDF TOOLKIT</div><h1>PDF work made<br/><span>simple & seamless.</span></h1><p>Everyday PDF tools to merge, split, rotate and convert documents and images. Free, straightforward and right in your browser.</p><div className="heroActions"><a className="primaryBtn" href="#tools">Explore PDF tools <ArrowRight size={18}/></a><span className="trust"><ShieldCheck size={17}/> No signup required</span></div><div className="heroStats"><div><b>100%</b><small>Free to use</small></div><i/><div><b>Private</b><small>Browser processing</small></div><i/><div><b>Simple</b><small>Made for everyone</small></div></div></div><div className="heroVisual"><div className="floatCard floatOne"><span className="miniIcon purple"><Files size={19}/></span><div><b>Merge PDF</b><small>Combine documents</small></div><CheckCircle2 className="check"/></div><div className="documentArt"><div className="docBack"/><div className="docFront"><div className="pdfBadge">PDF</div><div className="docLine wide"/><div className="docLine"/><div className="docLine short"/><div className="docGraph"><span/><span/><span/><span/><span/></div><div className="docLine wide"/></div><div className="spark s1">✦</div><div className="spark s2">✧</div></div><div className="floatCard floatTwo"><span className="miniIcon green"><LockKeyhole size={18}/></span><div><b>Your files stay yours</b><small>Processed on your device</small></div></div></div></div></section>
     <section className="toolSection" id="tools"><div className="container"><div className="sectionHead"><div><div className="eyebrow dark"><span/> SIMPLE TOOLS, BIG HELP</div><h2>What would you like to <span>do today?</span></h2><p>Pick a tool and get your PDF task done in a few clicks.</p></div><div className="toolCount"><b>06</b><small>TOOLS TO START</small></div></div><div className="toolGrid">{tools.map(t=>{const Icon=t.icon;return <button key={t.id} className={active===t.id?"toolCard selected":"toolCard"} onClick={()=>switchTool(t.id)}><div className="toolIcon"><Icon size={23}/></div><span className="toolTag">{t.tag}</span><h3>{t.name}</h3><p>{t.desc}</p><span className="toolLink">Use tool <ArrowRight size={15}/></span></button>})}</div>
-    <div className="workspace"><div className="workHead"><div><div className="eyebrow dark">PDF WORKSPACE</div><h3>{title}</h3><p>{active==="merge"?"Bring multiple PDF documents together in the order you choose.":active==="split"?"Choose which pages you want in your new PDF.":active==="rotate"?"Rotate every page in your PDF to the correct orientation.":active==="jpg"?"Convert your images into one neat PDF document.":active==="word"?"Convert a Word DOCX document into a PDF on this device.":"Convert every non-empty worksheet in an Excel workbook into PDF tables."}</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div><div className="workBody"><label className="dropzone" htmlFor="fileInput"><input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"||active==="word"||active==="excel"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/><span className="uploadIcon"><UploadCloud size={27}/></span><b>Click to upload or drag files here</b><small>{active==="jpg"?"JPG, PNG or WebP images":active==="word"?"Word .docx document":active==="excel"?"Excel .xlsx or .xls workbook":"PDF files"} · Max 30 MB per file</small></label>
+    <div className="workspace"><div className="workHead"><div><div className="eyebrow dark">PDF WORKSPACE</div><h3>{title}</h3><p>{active==="merge"?"Bring multiple PDF documents together in the order you choose.":active==="split"?"Choose which pages you want in your new PDF.":active==="rotate"?"Rotate every page in your PDF to the correct orientation.":active==="jpg"?"Convert your images into one neat PDF document.":active==="word"?"Convert a Word DOCX document into a PDF on this device.":"Convert every non-empty worksheet in an Excel workbook into PDF tables."}</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div><div className="workBody"><label className="dropzone" htmlFor="fileInput"><input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"||active==="word"||active==="excel"||active==="pdfword"||active==="pdfexcel"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/><span className="uploadIcon"><UploadCloud size={27}/></span><b>Click to upload or drag files here</b><small>{active==="jpg"?"JPG, PNG or WebP images":active==="word"?"Word .docx document":active==="excel"?"Excel .xlsx or .xls workbook":active==="pdfword"?"Text-based PDF file":active==="pdfexcel"?"Text-based PDF file":"PDF files"} · Max 30 MB per file</small></label>
       {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>{files.length} file{files.length>1?"s":""} selected</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileRow" key={f.id}><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB</small></span><span className="fileOrder">{i+1}</span><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div>)}</div>}
       {active==="split"&&<label className="optionField">Pages to extract <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
       {active==="rotate"&&<label className="optionField">Rotate pages by <select value={angle} onChange={e=>setAngle(e.target.value)}><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>}
