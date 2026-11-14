@@ -25,10 +25,31 @@ const tools = [
 ];
 function UploadedPdfPreview({ file }: { file: File }) {
   const [url, setUrl] = useState("");
-  useEffect(() => { const nextUrl = URL.createObjectURL(file); setUrl(nextUrl); return () => URL.revokeObjectURL(nextUrl); }, [file]);
-  if (file.type.startsWith("image/")) return <div className="uploadedPreview"><summary>Image preview</summary><img className="uploadedImage" src={url} alt={file.name}/></div>;
-  if (!file.name.toLowerCase().endsWith(".pdf")) return <div className="uploadedPreview"><summary>File selected for conversion</summary><p className="filePreviewNote">Your {file.name.toLowerCase().endsWith(".docx") ? "Word document" : "Excel workbook"} is ready. It will be converted in your browser when you press Process.</p></div>;
-  return <details className="uploadedPreview" open><summary>Preview uploaded PDF</summary>{url&&<iframe title={`Preview of ${file.name}`} src={url}/>}</details>;
+  const [expanded, setExpanded] = useState(false);
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  const isImage = file.type.startsWith("image/");
+  useEffect(() => {
+    const nextUrl = URL.createObjectURL(file);
+    setUrl(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [file]);
+  return <div className="uploadedPreview">
+    <div className="uploadedPreviewLabel">File preview <span>Click thumbnail to enlarge</span></div>
+    <button type="button" className="previewThumb" onClick={() => setExpanded(true)} aria-label={`Open large preview of ${file.name}`}>
+      {url && isPdf ? <iframe title={`Thumbnail of ${file.name}`} src={url} tabIndex={-1} /> : null}
+      {url && isImage ? <img src={url} alt={file.name} /> : null}
+      {!isPdf && !isImage ? <span className="documentThumb"><FileText size={42}/><b>{file.name.toLowerCase().endsWith(".docx") ? "WORD DOCUMENT" : "EXCEL WORKBOOK"}</b></span> : null}
+      <span className="previewThumbHint">Click to view large</span>
+    </button>
+    {expanded && <div className="previewModal" role="dialog" aria-modal="true" aria-label={`Preview of ${file.name}`}>
+      <div className="previewModalHeader"><div><b>{file.name}</b><small>Large file preview</small></div><button type="button" onClick={() => setExpanded(false)} aria-label="Close preview"><X size={22}/></button></div>
+      <div className="previewModalBody">
+        {url && isPdf ? <iframe title={`Full preview of ${file.name}`} src={url}/> : null}
+        {url && isImage ? <img src={url} alt={file.name}/> : null}
+        {!isPdf && !isImage ? <div className="previewUnavailable"><FileText size={36}/><b>Document preview is not available yet</b><span>This file is selected and ready for conversion.</span></div> : null}
+      </div>
+    </div>}
+  </div>;
 }
 
 export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) {
