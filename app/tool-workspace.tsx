@@ -271,7 +271,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
       {busy&&<div className="processingStatus" role="status"><span className="spinner blueSpinner"/><div><b>Processing your selected file{files.length>1?"s":""}…</b><small>Your files are being processed in this browser. They are not being uploaded to a server.</small></div></div>}
       {message&&<div className={result?"successMsg":"errorMsg"} role="status">{message}</div>}
       {result&&<div className="resultPanel"><div className="resultTop"><span className="resultIcon"><CheckCircle2 size={20}/></span><div className="resultDetails"><b>Your result is ready</b><small>{result.name} · {(result.blob.size/1024).toFixed(1)} KB</small></div><button className="downloadResult" onClick={()=>{const a=document.createElement("a");a.href=result.url;a.download=result.name;a.click();}}><Download size={16}/> Download</button></div>{result.type==="application/pdf"?<div className="previewWrap"><div className="previewHeading"><FileText size={15}/> {active==="merge"?"Final merged PDF preview":"Generated PDF preview"}</div><iframe title="Generated PDF preview" src={result.url} className="pdfPreview"/></div>:<div className="nonPdfPreview"><FileText size={20}/><span>Preview is not available for this file type. Download the generated file to open it.</span></div>}</div>}
-</div></div></div></div>}
+</div></div>}
     </div></section>
     <footer><div className="container footerInner"><Link className="brand" href="/"><span className="brandmark"><FileText size={20}/></span><span>My PDF <b>Seva</b></span></Link><span>Free PDF tools, made simple for everyone.</span><span>© {new Date().getFullYear()} My PDF Seva</span></div></footer>
   </main>;
