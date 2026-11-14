@@ -98,7 +98,7 @@ export default function Home() {
         pdf.save(item.file.name.replace(/\.(xlsx|xls)$/i, "") + ".pdf");
       } else if (active === "pdfword" || active === "pdfexcel") {
         if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
-        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(await files[0].file.arrayBuffer()), disableWorker: true });
+        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(await files[0].file.arrayBuffer()) });
         const pdf = await loadingTask.promise;
         const extracted: { page: number; y: number; x: number; text: string }[] = [];
         for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
