@@ -93,6 +93,7 @@ function UploadedPdfPreview({ file }: { file: File }) {
 export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) {
   const [active, setActive] = useState<ToolId>(initialTool);
   const [files, setFiles] = useState<PdfFile[]>([]);
+  const [showWorkspace, setShowWorkspace] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ blob: Blob; name: string; type: string; url: string } | null>(null);
   const [message, setMessage] = useState("");
@@ -107,11 +108,12 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
     if (!incoming.length) { setMessage(active === "jpg" ? "Please choose JPG, PNG or WebP images." : active === "word" ? "Please choose a .docx Word document." : active === "excel" ? "Please choose an .xlsx or .xls Excel workbook." : "Please choose a valid PDF file."); return; }
     if (incoming.some(f => f.size > 30 * 1024 * 1024)) { setMessage("Each file must be 30 MB or smaller."); return; }
     setFiles(old => [...old, ...incoming.map(file => ({ file, id: crypto.randomUUID() }))]);
+    setShowWorkspace(true);
     setMessage("");
   }, [active]);
-  const removeFile = (id: string) => setFiles(old => old.filter(f => f.id !== id));
+  const removeFile = (id: string) => setFiles(old => { const next = old.filter(f => f.id !== id); if (!next.length) setShowWorkspace(false); return next; });
   const moveFile = (index: number, direction: -1 | 1) => setFiles(old => { const next = [...old]; const target = index + direction; if (target < 0 || target >= next.length) return old; [next[index], next[target]] = [next[target], next[index]]; return next; });
-  const reset = () => { setFiles([]); setMessage(""); setResult(null); };
+  const reset = () => { setFiles([]); setShowWorkspace(false); setMessage(""); setResult(null); };
   const saveResult = (blob: Blob, name: string, type: string) => { if (result?.url) URL.revokeObjectURL(result.url); setResult({ blob, name, type, url: URL.createObjectURL(blob) }); };
   const download = (bytes: Uint8Array, name: string) => {
     const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
@@ -253,7 +255,15 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
     <div className="topbar"><div className="container topinner"><Link className="brand" href="/"><span className="brandmark"><FileText size={22}/></span><span>My PDF <b>Seva</b></span></Link><Link className="navCta" href="/#tools">All tools <ArrowRight size={16}/></Link></div></div>
     <section className="toolPageSection"><div className="container">
       <div className="toolPageIntro"><Link href="/#tools" className="backTools">← All PDF tools</Link><div className="eyebrow dark">MY PDF SEVA · ONLINE TOOL</div><h1>{tool.name}</h1><p>{description}</p></div>
-          <div className="workspace"><div className="workHead"><div><div className="eyebrow dark">PDF WORKSPACE</div><h3>{title}</h3><p>{active==="merge"?"Bring multiple PDF documents together in the order you choose.":active==="split"?"Choose which pages you want in your new PDF.":active==="rotate"?"Rotate every page in your PDF to the correct orientation.":active==="jpg"?"Convert your images into one neat PDF document.":active==="word"?"Convert a Word DOCX document into a PDF on this device.":"Convert every non-empty worksheet in an Excel workbook into PDF tables."}</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div><div className="workBody"><label className="dropzone" htmlFor="fileInput"><input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"||active==="word"||active==="excel"||active==="pdfword"||active==="pdfexcel"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/><span className="uploadIcon"><UploadCloud size={27}/></span><b>Click to upload or drag files here</b><small>{active==="jpg"?"JPG, PNG or WebP images":active==="word"?"Word .docx document":active==="excel"?"Excel .xlsx or .xls workbook":active==="pdfword"?"Text-based PDF file":active==="pdfexcel"?"Text-based PDF file":"PDF files"} · Max 30 MB per file</small></label>
+          {!showWorkspace ? <div className="workspace fileSelectStart">
+            <div className="workHead"><div><div className="eyebrow dark">START HERE</div><h3>{title}</h3><p>Select the file you want to work with. Your file will open in its workspace preview.</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div>
+            <div className="workBody selectOnlyBody">
+              <label className="dropzone selectFileButton" htmlFor="fileInput"><input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/><span className="uploadIcon"><UploadCloud size={27}/></span><b>Select {active==="jpg"?"Images":active==="word"?"Word file":active==="excel"?"Excel file":"PDF file"}</b><small>{active==="jpg"?"JPG, PNG or WebP images":active==="word"?"Word .docx document":active==="excel"?"Excel .xlsx or .xls workbook":"PDF file"} · Max 30 MB per file</small></label>
+              {message&&<div className="errorMsg" role="status">{message}</div>}
+              <div className="privacyNote selectPrivacy"><LockKeyhole size={14}/> Files are processed locally in your browser</div>
+            </div>
+          </div> : <div className="workspace"><div className="workHead"><div><div className="eyebrow dark">YOUR WORKSPACE</div><h3>{title}</h3><p>{description}</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div><div className="workBody">
+            <div className="fileSelectToolbar"><span>Selected file preview and processing</span><label className="secondarySelectBtn" htmlFor="fileInput">+ Add file<input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/></label></div>
       {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div><UploadedPdfPreview file={f.file}/></div>)}</div>}
       {active==="split"&&<label className="optionField">Pages to extract <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
       {active==="rotate"&&<label className="optionField">Rotate pages by <select value={angle} onChange={e=>setAngle(e.target.value)}><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>}
@@ -261,7 +271,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
       {busy&&<div className="processingStatus" role="status"><span className="spinner blueSpinner"/><div><b>Processing your selected file{files.length>1?"s":""}…</b><small>Your files are being processed in this browser. They are not being uploaded to a server.</small></div></div>}
       {message&&<div className={result?"successMsg":"errorMsg"} role="status">{message}</div>}
       {result&&<div className="resultPanel"><div className="resultTop"><span className="resultIcon"><CheckCircle2 size={20}/></span><div className="resultDetails"><b>Your result is ready</b><small>{result.name} · {(result.blob.size/1024).toFixed(1)} KB</small></div><button className="downloadResult" onClick={()=>{const a=document.createElement("a");a.href=result.url;a.download=result.name;a.click();}}><Download size={16}/> Download</button></div>{result.type==="application/pdf"?<div className="previewWrap"><div className="previewHeading"><FileText size={15}/> {active==="merge"?"Final merged PDF preview":"Generated PDF preview"}</div><iframe title="Generated PDF preview" src={result.url} className="pdfPreview"/></div>:<div className="nonPdfPreview"><FileText size={20}/><span>Preview is not available for this file type. Download the generated file to open it.</span></div>}</div>}
-</div></div>
+</div></div></div></div>}
     </div></section>
     <footer><div className="container footerInner"><Link className="brand" href="/"><span className="brandmark"><FileText size={20}/></span><span>My PDF <b>Seva</b></span></Link><span>Free PDF tools, made simple for everyone.</span><span>© {new Date().getFullYear()} My PDF Seva</span></div></footer>
   </main>;
