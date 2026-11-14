@@ -46,7 +46,53 @@ export default function Home() {
     if (!files.length) { setMessage("Upload at least one file to continue."); return; }
     setBusy(true); setMessage("");
     try {
-      if (active === "merge") {
+      if (active === "word") {
+        const item = files[0];
+        const converted = await mammoth.convertToHtml({ arrayBuffer: await item.file.arrayBuffer() });
+        if (!converted.value.trim()) throw new Error("No readable document text was found in this DOCX file.");
+        const holder = document.createElement("div");
+        holder.style.cssText = "position:fixed;left:-12000px;top:0;width:794px;padding:48px;background:#fff;color:#111;font-family:Arial,sans-serif;font-size:14px;line-height:1.5;overflow:visible;";
+        holder.innerHTML = converted.value;
+        holder.querySelectorAll("img").forEach(img => { (img as HTMLImageElement).style.maxWidth = "100%"; });
+        document.body.appendChild(holder);
+        try {
+          const canvas = await html2canvas(holder, { scale: 1.5, backgroundColor: "#ffffff", useCORS: true, logging: false });
+          const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+          const pageHeightPx = Math.floor(canvas.width * 297 / 210);
+          let offset = 0; let page = 0;
+          while (offset < canvas.height) {
+            const slice = document.createElement("canvas");
+            slice.width = canvas.width; slice.height = Math.min(pageHeightPx, canvas.height - offset);
+            const ctx = slice.getContext("2d");
+            if (!ctx) throw new Error("Could not prepare the PDF page.");
+            ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, slice.width, slice.height);
+            ctx.drawImage(canvas, 0, offset, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+            if (page > 0) pdf.addPage();
+            pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, slice.height * 210 / canvas.width);
+            offset += pageHeightPx; page += 1;
+          }
+          pdf.save(item.file.name.replace(/\.docx$/i, "") + ".pdf");
+        } finally { document.body.removeChild(holder); }
+      } else if (active === "excel") {
+        const item = files[0];
+        const workbook = XLSX.read(await item.file.arrayBuffer(), { type: "array", cellDates: true });
+        if (!workbook.SheetNames.length) throw new Error("No worksheets were found in this workbook.");
+        const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+        let renderedSheets = 0;
+        for (const sheetName of workbook.SheetNames) {
+          const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, raw: false, defval: "" }) as unknown[][];
+          const nonEmpty = rows.filter(row => row.some(cell => String(cell ?? "").trim() !== ""));
+          if (!nonEmpty.length) continue;
+          if (renderedSheets > 0) pdf.addPage();
+          pdf.setFontSize(13); pdf.text(sheetName.slice(0, 80), 14, 14);
+          const head = [nonEmpty[0].map(cell => String(cell ?? ""))];
+          const body = nonEmpty.slice(1).map(row => row.map(cell => String(cell ?? "")));
+          autoTable(pdf, { head, body, startY: 20, theme: "grid", styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" }, headStyles: { fillColor: [37, 99, 235] }, margin: { left: 10, right: 10 }, horizontalPageBreak: true });
+          renderedSheets += 1;
+        }
+        if (!renderedSheets) throw new Error("The workbook has no non-empty worksheet data.");
+        pdf.save(item.file.name.replace(/\.(xlsx|xls)$/i, "") + ".pdf");
+      } else if (active === "merge") {
         if (files.length < 2) throw new Error("Add at least two PDF files to merge.");
         const out = await PDFDocument.create();
         for (const item of files) { const src = await PDFDocument.load(await item.file.arrayBuffer()); const pages = await out.copyPages(src, src.getPageIndices()); pages.forEach(p => out.addPage(p)); }
