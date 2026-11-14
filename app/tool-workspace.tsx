@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PDFDocument, degrees } from "pdf-lib";
 import mammoth from "mammoth";
@@ -26,6 +26,7 @@ const tools = [
 function UploadedPdfPreview({ file }: { file: File }) {
   const [url, setUrl] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
   const isImage = file.type.startsWith("image/");
   useEffect(() => {
@@ -33,10 +34,45 @@ function UploadedPdfPreview({ file }: { file: File }) {
     setUrl(nextUrl);
     return () => URL.revokeObjectURL(nextUrl);
   }, [file]);
+  useEffect(() => {
+    if (!isPdf || !canvasRef.current) return;
+    let cancelled = false;
+    let renderTask: { cancel: () => void } | undefined;
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | undefined;
+    (async () => {
+      try {
+        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+        const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
+        if (cancelled || !canvasRef.current) return;
+        const base = page.getViewport({ scale: 1 });
+        const scale = Math.min(166 / base.width, 202 / base.height);
+        const viewport = page.getViewport({ scale });
+        const canvas = canvasRef.current;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.floor(viewport.width * pixelRatio);
+        canvas.height = Math.floor(viewport.height * pixelRatio);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        renderTask = page.render({ canvasContext: context, viewport });
+        await (renderTask as any).promise;
+      } catch (error) {
+        if (!cancelled) console.error("PDF thumbnail preview failed", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      renderTask?.cancel();
+      loadingTask?.destroy();
+    };
+  }, [file, isPdf]);
   return <div className="uploadedPreview">
     <div className="uploadedPreviewLabel">File preview <span>Click thumbnail to enlarge</span></div>
     <button type="button" className="previewThumb" onClick={() => setExpanded(true)} aria-label={`Open large preview of ${file.name}`}>
-      {url && isPdf ? <iframe title={`Thumbnail of ${file.name}`} src={url} tabIndex={-1} /> : null}
+      {isPdf ? <canvas ref={canvasRef} className="pdfThumbnailCanvas" aria-label={`First page of ${file.name}`}/> : null}
       {url && isImage ? <img src={url} alt={file.name} /> : null}
       {!isPdf && !isImage ? <span className="documentThumb"><FileText size={42}/><b>{file.name.toLowerCase().endsWith(".docx") ? "WORD DOCUMENT" : "EXCEL WORKBOOK"}</b></span> : null}
       <span className="previewThumbHint">Click to view large</span>
