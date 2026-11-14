@@ -9,6 +9,8 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 import { UploadCloud, FileText, Files, Scissors, RotateCw, Image as ImageIcon, ShieldCheck, ArrowRight, CheckCircle2, X, Download, LockKeyhole, ChevronUp, ChevronDown } from "lucide-react";
 
 type ToolId = "merge" | "split" | "rotate" | "jpg" | "word" | "excel" | "pdfword" | "pdfexcel";
