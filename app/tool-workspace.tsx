@@ -193,12 +193,12 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
         const source = await files[0].file.text();
         const parsed = new DOMParser().parseFromString(source, "text/html");
         parsed.querySelectorAll("script,iframe,object,embed,form,base,link[rel=stylesheet]").forEach(node => node.remove());
-        parsed.querySelectorAll("style").forEach(style => { style.textContent = (style.textContent || "").replace(/@import[^;]+;?/gi, "").replace(/url\\((?![\\\x27\\\x22]?data:)[^)]+\\)/gi, "none"); });
-        parsed.querySelectorAll("[style]").forEach(node => { const el = node as HTMLElement; el.style.backgroundImage = "none"; });
+        parsed.querySelectorAll("style,link[rel=stylesheet]").forEach(node => node.remove());
+        parsed.querySelectorAll("[style]").forEach(node => node.removeAttribute("style"));
         parsed.querySelectorAll("img").forEach(node => { const image = node as HTMLImageElement; if (image.src && !image.src.startsWith("data:")) image.removeAttribute("src"); });
         parsed.querySelectorAll("*").forEach(node => Array.from(node.attributes).forEach(attribute => {
           const name = attribute.name.toLowerCase();
-          if (name.startsWith("on") || ((name === "href" || name === "src" || name === "xlink:href") && /^\\s*javascript:/i.test(attribute.value))) node.removeAttribute(attribute.name);
+          if (name.startsWith("on") || ((name === "href" || name === "src" || name === "xlink:href") && /^\s*javascript:/i.test(attribute.value))) node.removeAttribute(attribute.name);
         }));
         const holder = document.createElement("div");
         holder.style.cssText = "position:fixed;left:-12000px;top:0;width:794px;padding:36px;box-sizing:border-box;background:#fff;color:#111;font-family:Arial,sans-serif;font-size:14px;line-height:1.5;overflow:visible;";
@@ -226,7 +226,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
             offset += pageHeightPx; page += 1;
             slice.width = 0; slice.height = 0;
           }
-          saveResult(pdf.output("blob"), files[0].file.name.replace(/\\.html?$/i, "") + ".pdf", "application/pdf");
+          saveResult(pdf.output("blob"), files[0].file.name.replace(/\.html?$/i, "") + ".pdf", "application/pdf");
         } finally { document.body.removeChild(holder); }
       } else if (active === "pdfjpg") {
         if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
@@ -249,7 +249,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
           page.cleanup(); canvas.width = 0; canvas.height = 0;
         }
         const archive = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 3 } });
-        const baseName = files[0].file.name.replace(/\\.pdf$/i, "");
+        const baseName = files[0].file.name.replace(/\.pdf$/i, "");
         saveResult(archive, `${baseName}-jpg-pages.zip`, "application/zip");
       } else if (active === "pagenumbers") {
         if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
@@ -267,7 +267,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
         if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
         const text = watermarkText.trim();
         if (!text || text.length > 80) throw new Error("Enter watermark text between 1 and 80 characters.");
-        if (!/^[\\x20-\\x7E]+$/.test(text)) throw new Error("For compatibility, use English letters, numbers and common keyboard symbols in the watermark.");
+        if (!/^[\x20-\x7E]+$/.test(text)) throw new Error("For compatibility, use English letters, numbers and common keyboard symbols in the watermark.");
         const pdf = await PDFDocument.load(await files[0].file.arrayBuffer());
         const font = await pdf.embedFont(StandardFonts.Helvetica);
         pdf.getPages().forEach(page => {
