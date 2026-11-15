@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { PDFDocument, degrees, StandardFonts, rgb } from "pdf-lib";
 import JSZip from "jszip";
@@ -151,6 +151,118 @@ function UploadedPdfPreview({ file, showAllPages = false, hideSinglePreview = fa
   </div>;
 }
 
+
+function CropPdfEditor({ file, pageNumber, onPageChange, selection, onSelectionChange }: {
+  file: File;
+  pageNumber: number;
+  onPageChange: (page: number) => void;
+  selection: { left: number; top: number; width: number; height: number } | null;
+  onSelectionChange: (value: { left: number; top: number; width: number; height: number } | null) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const [pageCount, setPageCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | undefined;
+    let renderTask: { cancel: () => void; promise: Promise<void> } | undefined;
+    (async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        loadingTask = pdfjsLib.getDocument({ data: bytes });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        setPageCount(pdf.numPages);
+        const targetPage = Math.min(Math.max(1, pageNumber), pdf.numPages);
+        if (targetPage !== pageNumber) {
+          onPageChange(targetPage);
+          return;
+        }
+        const page = await pdf.getPage(targetPage);
+        if (cancelled || !canvasRef.current) return;
+        const base = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: Math.min(1.5, 860 / base.width) });
+        const canvas = canvasRef.current;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Could not prepare the PDF page preview.");
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.ceil(viewport.width * pixelRatio);
+        canvas.height = Math.ceil(viewport.height * pixelRatio);
+        canvas.style.width = "100%";
+        canvas.style.height = "auto";
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        renderTask = page.render({ canvasContext: context, viewport }) as unknown as { cancel: () => void; promise: Promise<void> };
+        await renderTask.promise;
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not display this PDF page.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      renderTask?.cancel();
+      loadingTask?.destroy();
+    };
+  }, [file, pageNumber, onPageChange]);
+
+  const pointFromEvent = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect || !rect.width || !rect.height) return null;
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+    };
+  };
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (loading || error) return;
+    const point = pointFromEvent(event);
+    if (!point) return;
+    dragStart.current = point;
+    onSelectionChange(null);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragStart.current) return;
+    const point = pointFromEvent(event);
+    if (!point) return;
+    const start = dragStart.current;
+    onSelectionChange({
+      left: Math.min(start.x, point.x),
+      top: Math.min(start.y, point.y),
+      width: Math.abs(point.x - start.x),
+      height: Math.abs(point.y - start.y)
+    });
+  };
+  const finishPointer = () => { dragStart.current = null; };
+
+  return <section className="cropEditor">
+    <div className="cropEditorTop">
+      <div><b>Choose the area to keep</b><small>Drag your mouse or finger across the page to draw a crop box.</small></div>
+      <div className="cropPageNav">
+        <button type="button" onClick={() => onPageChange(Math.max(1, pageNumber - 1))} disabled={pageNumber <= 1}>←</button>
+        <span>Page {pageNumber} of {pageCount || "…"}</span>
+        <button type="button" onClick={() => onPageChange(Math.min(pageCount || pageNumber, pageNumber + 1))} disabled={!pageCount || pageNumber >= pageCount}>→</button>
+      </div>
+    </div>
+    {error ? <div className="cropEditorError">{error}</div> : null}
+    <div className="cropCanvasStage">
+      <div className="cropCanvasFrame" ref={frameRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={finishPointer} onPointerCancel={finishPointer}>
+        <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber} crop preview`}/>
+        {selection ? <div className="cropSelectionBox" style={{ left: `${selection.left * 100}%`, top: `${selection.top * 100}%`, width: `${selection.width * 100}%`, height: `${selection.height * 100}%` }}><span>Keep this area</span></div> : null}
+        {loading ? <div className="cropCanvasLoading">Loading page preview…</div> : null}
+      </div>
+    </div>
+    <div className="cropEditorFooter"><span>{selection ? `Crop area selected · ${Math.round(selection.width * 100)}% × ${Math.round(selection.height * 100)}% of page` : "No crop area selected yet."}</span><button type="button" onClick={() => onSelectionChange(null)} disabled={!selection}>Clear selection</button></div>
+  </section>;
+}
+
 export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) {
   const [active, setActive] = useState<ToolId>(initialTool);
   const [files, setFiles] = useState<PdfFile[]>([]);
@@ -163,7 +275,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
   const [pageNumberStart, setPageNumberStart] = useState("1");
   const [pageNumberPosition, setPageNumberPosition] = useState("center");
   const [watermarkText, setWatermarkText] = useState("My PDF Seva");
-  const [cropMargin, setCropMargin] = useState("5");
+  const [cropSelection, setCropSelection] = useState<{ left: number; top: number; width: number; height: number } | null>(null);\n  const [cropScope, setCropScope] = useState<"all" | "current">("all");\n  const [cropPage, setCropPage] = useState(1);
   
   const accept = active === "jpg" ? "image/jpeg,image/png,image/webp" : active === "word" ? ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : active === "excel" ? ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : active === "html" ? ".html,.htm,text/html" : "application/pdf,.pdf";
   const title = tools.find(t => t.id === active)?.name ?? "PDF tools";
@@ -172,13 +284,13 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
     const incoming = Array.from(list).filter(f => active === "jpg" ? ["image/jpeg","image/png","image/webp"].includes(f.type) : active === "word" ? f.name.toLowerCase().endsWith(".docx") : active === "excel" ? /\.(xlsx|xls)$/i.test(f.name) : active === "html" ? /\.html?$/i.test(f.name) : f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
     if (!incoming.length) { setMessage(active === "jpg" ? "Please choose JPG, PNG or WebP images." : active === "word" ? "Please choose a .docx Word document." : active === "excel" ? "Please choose an .xlsx or .xls Excel workbook." : active === "html" ? "Please choose an .html or .htm file." : "Please choose a valid PDF file."); return; }
     if (incoming.some(f => f.size > 30 * 1024 * 1024)) { setMessage("Each file must be 30 MB or smaller."); return; }
-    setFiles(old => [...old, ...incoming.map(file => ({ file, id: crypto.randomUUID() }))]);
+    if (active === "crop") { setCropSelection(null); setCropPage(1); }\n    setFiles(old => [...old, ...incoming.map(file => ({ file, id: crypto.randomUUID() }))]);
     setShowWorkspace(true);
     setMessage("");
   }, [active]);
   const removeFile = (id: string) => setFiles(old => { const next = old.filter(f => f.id !== id); if (!next.length) setShowWorkspace(false); return next; });
   const moveFile = (index: number, direction: -1 | 1) => setFiles(old => { const next = [...old]; const target = index + direction; if (target < 0 || target >= next.length) return old; [next[index], next[target]] = [next[target], next[index]]; return next; });
-  const reset = () => { setFiles([]); setShowWorkspace(false); setMessage(""); setResult(null); };
+  const reset = () => { setFiles([]); setShowWorkspace(false); setMessage(""); setResult(null); setCropSelection(null); setCropPage(1); };
   const saveResult = (blob: Blob, name: string, type: string) => { if (result?.url) URL.revokeObjectURL(result.url); setResult({ blob, name, type, url: URL.createObjectURL(blob) }); };
   const download = (bytes: Uint8Array, name: string) => {
     const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
@@ -278,15 +390,32 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
         download(await pdf.save(), files[0].file.name.replace(/\.pdf$/i, "") + "-watermarked.pdf");
       } else if (active === "crop") {
         if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
-        const marginPercent = Number(cropMargin);
-        if (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 30) throw new Error("Choose a crop margin between 0 and 30 percent.");
-        const pdf = await PDFDocument.load(await files[0].file.arrayBuffer());
-        pdf.getPages().forEach((page, index) => {
-          const width = page.getWidth(); const height = page.getHeight();
-          const marginX = width * marginPercent / 100; const marginY = height * marginPercent / 100;
-          if (width - marginX * 2 < 72 || height - marginY * 2 < 72) throw new Error(`Crop margin is too large for page ${index + 1}.`);
-          page.setCropBox(marginX, marginY, width - marginX * 2, height - marginY * 2);
-        });
+        if (!cropSelection || cropSelection.width < 0.015 || cropSelection.height < 0.015) throw new Error("Draw a crop area on the PDF page before processing.");
+        const bytes = await files[0].file.arrayBuffer();
+        const pdf = await PDFDocument.load(bytes);
+        const previewTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes) });
+        const previewPdf = await previewTask.promise;
+        const pageIndexes = cropScope === "all" ? pdf.getPageIndices() : [cropPage - 1];
+        if (pageIndexes.some(index => index < 0 || index >= pdf.getPageCount())) throw new Error("Choose a valid page to crop.");
+        for (const index of pageIndexes) {
+          const previewPage = await previewPdf.getPage(index + 1);
+          const viewport = previewPage.getViewport({ scale: 1 });
+          const first = viewport.convertToPdfPoint(cropSelection.left * viewport.width, cropSelection.top * viewport.height);
+          const second = viewport.convertToPdfPoint((cropSelection.left + cropSelection.width) * viewport.width, (cropSelection.top + cropSelection.height) * viewport.height);
+          const left = Math.min(first[0], second[0]);
+          const bottom = Math.min(first[1], second[1]);
+          const right = Math.max(first[0], second[0]);
+          const top = Math.max(first[1], second[1]);
+          const page = pdf.getPage(index);
+          const bounds = page.getCropBox();
+          const x = Math.max(bounds.x, left);
+          const y = Math.max(bounds.y, bottom);
+          const x2 = Math.min(bounds.x + bounds.width, right);
+          const y2 = Math.min(bounds.y + bounds.height, top);
+          if (x2 - x < 36 || y2 - y < 36) throw new Error(`The selected crop area is too small on page ${index + 1}.`);
+          page.setCropBox(x, y, x2 - x, y2 - y);
+        }
+        await previewTask.destroy();
         download(await pdf.save(), files[0].file.name.replace(/\.pdf$/i, "") + "-cropped.pdf");
       } else if (active === "word") {
         const item = files[0];
@@ -427,7 +556,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
   };
 
   const tool = tools.find(t=>t.id===active)!;
-  const description = active==="merge" ? "Bring multiple PDF documents together in the order you choose." : active==="split" ? "Choose which pages you want in your new PDF." : active==="remove" ? "Select the pages you want to delete. The remaining pages will be saved as a new PDF." : active==="pdfjpg" ? "Convert each PDF page to a JPG image and download all pages in one ZIP file." : active==="html" ? "Convert a local HTML file into a PDF. External scripts and embedded frames are removed for safety." : active==="pagenumbers" ? "Add sequential page numbers at the bottom of every page." : active==="watermark" ? "Add a light text watermark across every page of your PDF." : active==="crop" ? "Crop the same percentage from all four edges of every page." : active==="rotate" ? "Rotate every page in your PDF to the correct orientation." : active==="jpg" ? "Convert your images into one neat PDF document." : active==="word" ? "Convert a Word DOCX document into a PDF on this device." : active==="excel" ? "Convert every non-empty worksheet in an Excel workbook into PDF tables." : active==="pdfword" ? "Convert selectable text in a PDF into a Word document." : "Extract selectable PDF text into an Excel workbook.";
+  const description = active==="merge" ? "Bring multiple PDF documents together in the order you choose." : active==="split" ? "Choose which pages you want in your new PDF." : active==="remove" ? "Select the pages you want to delete. The remaining pages will be saved as a new PDF." : active==="pdfjpg" ? "Convert each PDF page to a JPG image and download all pages in one ZIP file." : active==="html" ? "Convert a local HTML file into a PDF. External scripts and embedded frames are removed for safety." : active==="pagenumbers" ? "Add sequential page numbers at the bottom of every page." : active==="watermark" ? "Add a light text watermark across every page of your PDF." : active==="crop" ? "Select a custom area on the PDF page, then crop just that page or every page." : active==="rotate" ? "Rotate every page in your PDF to the correct orientation." : active==="jpg" ? "Convert your images into one neat PDF document." : active==="word" ? "Convert a Word DOCX document into a PDF on this device." : active==="excel" ? "Convert every non-empty worksheet in an Excel workbook into PDF tables." : active==="pdfword" ? "Convert selectable text in a PDF into a Word document." : "Extract selectable PDF text into an Excel workbook.";
   return <main className="toolPage">
     <div className="topbar"><div className="container topinner"><Link className="brand" href="/"><span className="brandmark"><FileText size={22}/></span><span>My PDF <b>Seva</b></span></Link><Link className="navCta" href="/#tools">All tools <ArrowRight size={16}/></Link></div></div>
     <section className="toolPageSection"><div className="container">
@@ -441,13 +570,14 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
             </div>
           </div> : <div className="workspace"><div className="workHead"><div><div className="eyebrow dark">YOUR WORKSPACE</div><h3>{title}</h3><p>{description}</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div><div className="workBody">
             <div className="fileSelectToolbar"><span>Selected file preview and processing</span><label className="secondarySelectBtn" htmlFor="fileInput">+ Add file<input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/></label></div>
-      {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div><UploadedPdfPreview file={f.file} showAllPages={!["jpg","word","excel"].includes(active)} hideSinglePreview={!["jpg","word","excel"].includes(active)} selectablePages={active==="split"||active==="remove"} selectedValue={range} onSelectPage={(page)=>setRange(old=>{const nums=new Set(old.split(",").map(v=>Number(v.trim())).filter(n=>Number.isInteger(n)&&n>0));if(nums.has(page))nums.delete(page);else nums.add(page);return [...nums].sort((a,b)=>a-b).join(",");})}/></div>)}</div>}
+      {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div>{active!=="crop"&&<UploadedPdfPreview file={f.file} showAllPages={!["jpg","word","excel"].includes(active)} hideSinglePreview={!["jpg","word","excel"].includes(active)} selectablePages={active==="split"||active==="remove"} selectedValue={range} onSelectPage={(page)=>setRange(old=>{const nums=new Set(old.split(",").map(v=>Number(v.trim())).filter(n=>Number.isInteger(n)&&n>0));if(nums.has(page))nums.delete(page);else nums.add(page);return [...nums].sort((a,b)=>a-b).join(",");})}/>}</div>)}</div>}
+      {active==="crop"&&files[0]&&<><CropPdfEditor file={files[0].file} pageNumber={cropPage} onPageChange={setCropPage} selection={cropSelection} onSelectionChange={setCropSelection}/><div className="optionField cropScopeField">Apply crop to <div className="optionControls"><label><input type="radio" name="cropScope" value="all" checked={cropScope==="all"} onChange={()=>setCropScope("all")}/> All pages</label><label><input type="radio" name="cropScope" value="current" checked={cropScope==="current"} onChange={()=>setCropScope("current")}/> Current page only (page {cropPage})</label></div><small>For all pages, the same relative crop area is applied to each page.</small></div></>}
       {(active==="split"||active==="remove")&&<label className="optionField">{active==="split"?"Pages to extract":"Pages to remove"} <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
       {active==="rotate"&&<label className="optionField">Rotate pages by <select value={angle} onChange={e=>setAngle(e.target.value)}><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>}
       {active==="pagenumbers"&&<div className="optionField">Page numbering <div className="optionControls"><label>Start from <input type="number" min="1" max="999999" value={pageNumberStart} onChange={e=>setPageNumberStart(e.target.value)}/></label><label>Position <select value={pageNumberPosition} onChange={e=>setPageNumberPosition(e.target.value)}><option value="left">Bottom left</option><option value="center">Bottom center</option><option value="right">Bottom right</option></select></label></div></div>}
       {active==="watermark"&&<label className="optionField">Watermark text <input value={watermarkText} maxLength={80} onChange={e=>setWatermarkText(e.target.value)} placeholder="Enter watermark text"/></label>}
-      {active==="crop"&&<label className="optionField">Crop edge margin (%) <input type="number" min="0" max="30" step="1" value={cropMargin} onChange={e=>setCropMargin(e.target.value)}/><small>Same margin is applied to all four edges of every page. Cropping hides the outer area; it does not permanently erase it.</small></label>}
-      <div className="workActions"><button className="primaryBtn runBtn" disabled={busy||files.length===0} onClick={runTool}>{busy?<><span className="spinner"/> Processing…</>:<>Process PDF <ArrowRight size={17}/></>}</button><span className="privacyNote"><LockKeyhole size={14}/> Files are processed locally in your browser</span></div>
+
+      <div className="workActions"><button className="primaryBtn runBtn" disabled={busy||files.length===0} onClick={runTool}>{busy?<><span className="spinner"/> Processing…</>:<>{active==="crop"?"Crop PDF":"Process PDF"} <ArrowRight size={17}/></>}</button><span className="privacyNote"><LockKeyhole size={14}/> Files are processed locally in your browser</span></div>
       {busy&&<div className="processingStatus" role="status"><span className="spinner blueSpinner"/><div><b>Processing your selected file{files.length>1?"s":""}…</b><small>Your files are being processed in this browser. They are not being uploaded to a server.</small></div></div>}
       {message&&<div className={result?"successMsg":"errorMsg"} role="status">{message}</div>}
       {result&&<div className="resultPanel"><div className="resultTop"><span className="resultIcon"><CheckCircle2 size={20}/></span><div className="resultDetails"><b>Your result is ready</b><small>{result.name} · {(result.blob.size/1024).toFixed(1)} KB</small></div><button className="downloadResult" onClick={()=>{const a=document.createElement("a");a.href=result.url;a.download=result.name;a.click();}}><Download size={16}/> Download</button></div>{result.type==="application/pdf"?<div className="previewWrap"><div className="previewHeading"><FileText size={15}/> {active==="merge"?"Final merged PDF preview":"Generated PDF preview"}</div><iframe title="Generated PDF preview" src={result.url} className="pdfPreview"/></div>:<div className="nonPdfPreview"><FileText size={20}/><span>{result.type==="application/zip"?"Your JPG pages are packed into a ZIP archive. Download and extract it to view every page.":"Preview is not available for this file type. Download the generated file to open it."}</span></div>}</div>}
