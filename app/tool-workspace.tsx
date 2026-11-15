@@ -14,12 +14,14 @@ import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 import { UploadCloud, FileText, Files, Scissors, RotateCw, Image as ImageIcon, ShieldCheck, ArrowRight, CheckCircle2, X, Download, LockKeyhole, ChevronUp, ChevronDown } from "lucide-react";
 
-type ToolId = "compress" | "merge" | "split" | "remove" | "rotate" | "jpg" | "word" | "excel" | "pdfword" | "pdfexcel" | "pdfjpg" | "html" | "pagenumbers" | "watermark" | "crop";
+type ToolId = "compress" | "merge" | "split" | "extract" | "organize" | "remove" | "rotate" | "jpg" | "word" | "excel" | "pdfword" | "pdfexcel" | "pdfjpg" | "html" | "pagenumbers" | "watermark" | "crop";
 type PdfFile = { file: File; id: string };
 const tools = [
   { id: "compress" as ToolId, name: "Compress PDF", desc: "Reduce PDF file size with balanced or strong image compression.", icon: FileText, tag: "Optimize", slug:"compress-pdf" },
   { id: "merge" as ToolId, name: "Merge PDF", desc: "Combine multiple PDFs into one organized file.", icon: Files, tag: "Most popular", slug:"merge-pdf" },
   { id: "split" as ToolId, name: "Split PDF", desc: "Extract selected pages into a new PDF file.", icon: Scissors, tag: "Quick & easy", slug:"split-pdf" },
+  { id: "extract" as ToolId, name: "Extract Pages", desc: "Save selected pages as separate PDF files in one ZIP.", icon: Files, tag: "Organize", slug:"extract-pages" },
+  { id: "organize" as ToolId, name: "Organize PDF", desc: "Reorder PDF pages before saving a new document.", icon: Files, tag: "Organize", slug:"organize-pdf" },
   { id: "remove" as ToolId, name: "Remove Pages", desc: "Delete unwanted pages from a PDF.", icon: Scissors, tag: "Organize", slug:"remove-pages" },
   { id: "pdfjpg" as ToolId, name: "PDF to JPG", desc: "Convert every PDF page into a JPG image.", icon: ImageIcon, tag: "Convert", slug:"pdf-to-jpg" },
   { id: "html" as ToolId, name: "HTML to PDF", desc: "Convert an HTML file into a PDF document.", icon: FileText, tag: "Convert", slug:"html-to-pdf" },
@@ -153,6 +155,69 @@ function UploadedPdfPreview({ file, showAllPages = false, hideSinglePreview = fa
 }
 
 
+function OrganizePdfEditor({ file, order, onOrderChange }: { file: File; order: number[]; onOrderChange: (value: number[]) => void }) {
+  const [previews, setPreviews] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    let task: ReturnType<typeof pdfjsLib.getDocument> | undefined;
+    (async () => {
+      try {
+        setLoading(true); setError("");
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        task = pdfjsLib.getDocument({ data: bytes });
+        const pdf = await task.promise;
+        if (pdf.numPages > 80) throw new Error("Organize PDF currently supports up to 80 pages for browser stability.");
+        const next: Record<number, string> = {};
+        for (let n = 1; n <= pdf.numPages; n++) {
+          if (cancelled) return;
+          const page = await pdf.getPage(n);
+          const base = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: Math.min(130 / base.width, 160 / base.height) });
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) continue;
+          canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+          await page.render({ canvasContext: context, viewport }).promise;
+          next[n] = canvas.toDataURL("image/jpeg", 0.78);
+          canvas.width = 0; canvas.height = 0;
+          page.cleanup();
+        }
+        if (!cancelled) { setPreviews(next); onOrderChange(Array.from({ length: pdf.numPages }, (_, i) => i + 1)); }
+      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : "Could not load PDF pages."); }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; task?.destroy(); };
+  }, [file, onOrderChange]);
+  const move = (index: number, delta: -1 | 1) => {
+    const next = [...order]; const target = index + delta;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    onOrderChange(next);
+  };
+  return <section style={{ margin: "22px 0", padding: 18, border: "1px solid #dce5f2", borderRadius: 16, background: "#f8fbff" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+      <div><b>Arrange your PDF pages</b><div style={{ color: "#64748b", fontSize: 13 }}>Use the arrows to move pages into the order you want.</div></div>
+      <span style={{ fontSize: 13, color: "#2563eb", fontWeight: 600 }}>{order.length} pages</span>
+    </div>
+    {error && <p role="alert">{error}</p>}
+    {loading ? <p>Preparing page previews…</p> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(135px,1fr))", gap: 12 }}>
+      {order.map((pageNo, index) => <div key={pageNo} style={{ background: "#fff", border: "1px solid #dbe4f0", borderRadius: 12, padding: 9, minWidth: 0 }}>
+        {previews[pageNo] ? <img src={previews[pageNo]} alt={`Page ${pageNo}`} style={{ display: "block", width: "100%", height: 150, objectFit: "contain", background: "#f1f5f9", borderRadius: 7 }} /> : <div style={{ height: 150 }}>Page {pageNo}</div>}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginTop: 8 }}>
+          <b style={{ fontSize: 13 }}>Position {index + 1}</b>
+          <span style={{ fontSize: 12, color: "#64748b" }}>Page {pageNo}</span>
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
+          <button type="button" onClick={() => move(index, -1)} disabled={index === 0} aria-label={`Move page ${pageNo} earlier`} style={{ flex: 1, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 7, background: "#fff", cursor: "pointer" }}>← Move up</button>
+          <button type="button" onClick={() => move(index, 1)} disabled={index === order.length - 1} aria-label={`Move page ${pageNo} later`} style={{ flex: 1, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 7, background: "#fff", cursor: "pointer" }}>Move down →</button>
+        </div>
+      </div>)}
+    </div>}
+  </section>;
+}
+
 function CropPdfEditor({ file, pageNumber, onPageChange, selection, onSelectionChange }: {
   file: File;
   pageNumber: number;
@@ -280,6 +345,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
   const [cropScope, setCropScope] = useState<"all" | "current">("all");
   const [compressionQuality, setCompressionQuality] = useState<"balanced" | "strong">("balanced");
   const [cropPage, setCropPage] = useState(1);
+  const [pageOrder, setPageOrder] = useState<number[]>([]);
   
   const accept = active === "jpg" ? "image/jpeg,image/png,image/webp" : active === "word" ? ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : active === "excel" ? ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : active === "html" ? ".html,.htm,text/html" : "application/pdf,.pdf";
   const title = tools.find(t => t.id === active)?.name ?? "PDF tools";
@@ -576,6 +642,36 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
         const out = await PDFDocument.create();
         for (const item of files) { const src = await PDFDocument.load(await item.file.arrayBuffer()); const pages = await out.copyPages(src, src.getPageIndices()); pages.forEach(p => out.addPage(p)); }
         download(await out.save(), "my-pdf-seva-merged.pdf");
+      } else if (active === "extract") {
+        if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
+        const source = await PDFDocument.load(await files[0].file.arrayBuffer());
+        const total = source.getPageCount();
+        const selected = range.split(",").flatMap(part => {
+          const value = part.trim(); if (!value) return [];
+          const [start, end] = value.split("-").map(Number);
+          if (!Number.isInteger(start) || (value.includes("-") && !Number.isInteger(end)) || start < 1 || (end || start) < start || (end || start) > total) return [NaN];
+          return Array.from({ length: (end || start) - start + 1 }, (_, i) => start + i);
+        });
+        const unique = [...new Set(selected)];
+        if (!unique.length || unique.some(n => !Number.isInteger(n) || n < 1 || n > total)) throw new Error(`Enter valid page numbers from 1 to ${total}, e.g. 1-3,5.`);
+        const zip = new JSZip();
+        for (const pageNo of unique) {
+          const output = await PDFDocument.create();
+          const [copied] = await output.copyPages(source, [pageNo - 1]);
+          output.addPage(copied);
+          zip.file(`page-${String(pageNo).padStart(3, "0")}.pdf`, await output.save());
+        }
+        const archive = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 3 } });
+        saveResult(archive, files[0].file.name.replace(/\.pdf$/i, "") + "-extracted-pages.zip", "application/zip");
+      } else if (active === "organize") {
+        if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
+        const source = await PDFDocument.load(await files[0].file.arrayBuffer());
+        const total = source.getPageCount();
+        if (pageOrder.length !== total || new Set(pageOrder).size !== total || pageOrder.some(n => !Number.isInteger(n) || n < 1 || n > total)) throw new Error("Page order is still loading or invalid. Please wait for all page previews.");
+        const output = await PDFDocument.create();
+        const copied = await output.copyPages(source, pageOrder.map(n => n - 1));
+        copied.forEach(page => output.addPage(page));
+        download(await output.save(), files[0].file.name.replace(/\.pdf$/i, "") + "-organized.pdf");
       } else if (active === "split") {
         const src = await PDFDocument.load(await files[0].file.arrayBuffer());
         const total = src.getPageCount(); const parts = range.split(",").flatMap(v => { const [a,b] = v.trim().split("-").map(Number); return Array.from({length: Math.max(0,(b || a)-a+1)},(_,i)=>a+i); });
@@ -622,9 +718,10 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
             </div>
           </div> : <div className="workspace"><div className="workHead"><div><div className="eyebrow dark">YOUR WORKSPACE</div><h3>{title}</h3><p>{description}</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div><div className="workBody">
             <div className="fileSelectToolbar"><span>Selected file preview and processing</span><label className="secondarySelectBtn" htmlFor="fileInput">+ Add file<input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/></label></div>
-      {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div>{active!=="crop"&&<UploadedPdfPreview file={f.file} showAllPages={!["jpg","word","excel"].includes(active)} hideSinglePreview={!["jpg","word","excel"].includes(active)} selectablePages={active==="split"||active==="remove"} selectedValue={range} onSelectPage={(page)=>setRange(old=>{const nums=new Set(old.split(",").map(v=>Number(v.trim())).filter(n=>Number.isInteger(n)&&n>0));if(nums.has(page))nums.delete(page);else nums.add(page);return [...nums].sort((a,b)=>a-b).join(",");})}/>}</div>)}</div>}
+      {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div>{active!=="crop"&&<UploadedPdfPreview file={f.file} showAllPages={!["jpg","word","excel"].includes(active)} hideSinglePreview={!["jpg","word","excel"].includes(active)} selectablePages={active==="split"||active==="extract"||active==="remove"} selectedValue={range} onSelectPage={(page)=>setRange(old=>{const nums=new Set(old.split(",").map(v=>Number(v.trim())).filter(n=>Number.isInteger(n)&&n>0));if(nums.has(page))nums.delete(page);else nums.add(page);return [...nums].sort((a,b)=>a-b).join(",");})}/>}</div>)}</div>}
       {active==="crop"&&files[0]&&<><CropPdfEditor file={files[0].file} pageNumber={cropPage} onPageChange={setCropPage} selection={cropSelection} onSelectionChange={setCropSelection}/><div className="optionField cropScopeField">Apply crop to <div className="optionControls"><label><input type="radio" name="cropScope" value="all" checked={cropScope==="all"} onChange={()=>setCropScope("all")}/> All pages</label><label><input type="radio" name="cropScope" value="current" checked={cropScope==="current"} onChange={()=>setCropScope("current")}/> Current page only (page {cropPage})</label></div><small>For all pages, the same relative crop area is applied to each page.</small></div></>}
-      {(active==="split"||active==="remove")&&<label className="optionField">{active==="split"?"Pages to extract":"Pages to remove"} <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
+      {active==="organize"&&files[0]&&<OrganizePdfEditor file={files[0].file} order={pageOrder} onOrderChange={setPageOrder}/>}
+      {(active==="split"||active==="extract"||active==="remove")&&<label className="optionField">{active==="split"||active==="extract"?"Pages to extract":"Pages to remove"} <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
       {active==="rotate"&&<label className="optionField">Rotate pages by <select value={angle} onChange={e=>setAngle(e.target.value)}><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>}
       {active==="pagenumbers"&&<div className="optionField">Page numbering <div className="optionControls"><label>Start from <input type="number" min="1" max="999999" value={pageNumberStart} onChange={e=>setPageNumberStart(e.target.value)}/></label><label>Position <select value={pageNumberPosition} onChange={e=>setPageNumberPosition(e.target.value)}><option value="left">Bottom left</option><option value="center">Bottom center</option><option value="right">Bottom right</option></select></label></div></div>}
       {active==="compress"&&<div className="optionField compressionOptions">Compression level <div className="optionControls"><label><input type="radio" name="compressionQuality" value="balanced" checked={compressionQuality==="balanced"} onChange={()=>setCompressionQuality("balanced")}/> Recommended · Balanced quality</label><label><input type="radio" name="compressionQuality" value="strong" checked={compressionQuality==="strong"} onChange={()=>setCompressionQuality("strong")}/> Strong · Smaller file</label></div><small>Compression converts PDF pages to JPG images. Text will not remain selectable or searchable. Your original file is unchanged.</small></div>}
