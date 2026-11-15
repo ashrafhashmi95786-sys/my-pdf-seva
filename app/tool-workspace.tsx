@@ -13,11 +13,12 @@ import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 import { UploadCloud, FileText, Files, Scissors, RotateCw, Image as ImageIcon, ShieldCheck, ArrowRight, CheckCircle2, X, Download, LockKeyhole, ChevronUp, ChevronDown } from "lucide-react";
 
-type ToolId = "merge" | "split" | "rotate" | "jpg" | "word" | "excel" | "pdfword" | "pdfexcel";
+type ToolId = "merge" | "split" | "remove" | "rotate" | "jpg" | "word" | "excel" | "pdfword" | "pdfexcel";
 type PdfFile = { file: File; id: string };
 const tools = [
   { id: "merge" as ToolId, name: "Merge PDF", desc: "Combine multiple PDFs into one organized file.", icon: Files, tag: "Most popular", slug:"merge-pdf" },
-  { id: "split" as ToolId, name: "Split PDF", desc: "Extract a page range into a new PDF file.", icon: Scissors, tag: "Quick & easy", slug:"split-pdf" },
+  { id: "split" as ToolId, name: "Split PDF", desc: "Extract selected pages into a new PDF file.", icon: Scissors, tag: "Quick & easy", slug:"split-pdf" },
+  { id: "remove" as ToolId, name: "Remove Pages", desc: "Delete unwanted pages from a PDF.", icon: Scissors, tag: "Organize", slug:"remove-pages" },
   { id: "rotate" as ToolId, name: "Rotate PDF", desc: "Fix sideways pages in just a few clicks.", icon: RotateCw, tag: "Useful", slug:"rotate-pdf" },
   { id: "jpg" as ToolId, name: "JPG to PDF", desc: "Turn your images into a shareable PDF.", icon: ImageIcon, tag: "Image tools", slug:"jpg-to-pdf" },
   { id: "word" as ToolId, name: "Word to PDF", desc: "Convert DOCX documents into PDF files.", icon: FileText, tag: "Document", slug:"word-to-pdf" },
@@ -289,6 +290,18 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
         const total = src.getPageCount(); const parts = range.split(",").flatMap(v => { const [a,b] = v.trim().split("-").map(Number); return Array.from({length: Math.max(0,(b || a)-a+1)},(_,i)=>a+i); });
         if (!parts.length || parts.some(n => !Number.isInteger(n) || n < 1 || n > total)) throw new Error(`Enter valid page numbers from 1 to ${total}, e.g. 1-3,5.`);
         const out = await PDFDocument.create(); const copied = await out.copyPages(src, [...new Set(parts)].map(n=>n-1)); copied.forEach(p=>out.addPage(p)); download(await out.save(), "my-pdf-seva-pages.pdf");
+      } else if (active === "remove") {
+        const src = await PDFDocument.load(await files[0].file.arrayBuffer());
+        const total = src.getPageCount();
+        const parts = range.split(",").flatMap(v => { const value = v.trim(); if (!value) return []; const [a,b] = value.split("-").map(Number); if (!Number.isInteger(a) || (value.includes("-") && !Number.isInteger(b))) return [NaN]; return Array.from({length: Math.max(0,(b || a)-a+1)},(_,i)=>a+i); });
+        const unique = [...new Set(parts)];
+        if (!unique.length || unique.some(n => !Number.isInteger(n) || n < 1 || n > total)) throw new Error(`Select valid page numbers to remove from 1 to ${total}.`);
+        if (unique.length >= total) throw new Error("You cannot remove every page. Keep at least one page in the PDF.");
+        const keep = src.getPageIndices().filter(index => !unique.includes(index + 1));
+        const out = await PDFDocument.create();
+        const copied = await out.copyPages(src, keep);
+        copied.forEach(page => out.addPage(page));
+        download(await out.save(), "my-pdf-seva-pages-removed.pdf");
       } else if (active === "rotate") {
         const src = await PDFDocument.load(await files[0].file.arrayBuffer()); const rotation = Number(angle);
         if (![90,180,270].includes(rotation)) throw new Error("Choose 90, 180 or 270 degrees.");
@@ -304,7 +317,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
   };
 
   const tool = tools.find(t=>t.id===active)!;
-  const description = active==="merge" ? "Bring multiple PDF documents together in the order you choose." : active==="split" ? "Choose which pages you want in your new PDF." : active==="rotate" ? "Rotate every page in your PDF to the correct orientation." : active==="jpg" ? "Convert your images into one neat PDF document." : active==="word" ? "Convert a Word DOCX document into a PDF on this device." : active==="excel" ? "Convert every non-empty worksheet in an Excel workbook into PDF tables." : active==="pdfword" ? "Convert selectable text in a PDF into a Word document." : "Extract selectable PDF text into an Excel workbook.";
+  const description = active==="merge" ? "Bring multiple PDF documents together in the order you choose." : active==="split" ? "Choose which pages you want in your new PDF." : active==="remove" ? "Select the pages you want to delete. The remaining pages will be saved as a new PDF." : active==="rotate" ? "Rotate every page in your PDF to the correct orientation." : active==="jpg" ? "Convert your images into one neat PDF document." : active==="word" ? "Convert a Word DOCX document into a PDF on this device." : active==="excel" ? "Convert every non-empty worksheet in an Excel workbook into PDF tables." : active==="pdfword" ? "Convert selectable text in a PDF into a Word document." : "Extract selectable PDF text into an Excel workbook.";
   return <main className="toolPage">
     <div className="topbar"><div className="container topinner"><Link className="brand" href="/"><span className="brandmark"><FileText size={22}/></span><span>My PDF <b>Seva</b></span></Link><Link className="navCta" href="/#tools">All tools <ArrowRight size={16}/></Link></div></div>
     <section className="toolPageSection"><div className="container">
@@ -318,8 +331,8 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
             </div>
           </div> : <div className="workspace"><div className="workHead"><div><div className="eyebrow dark">YOUR WORKSPACE</div><h3>{title}</h3><p>{description}</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div><div className="workBody">
             <div className="fileSelectToolbar"><span>Selected file preview and processing</span><label className="secondarySelectBtn" htmlFor="fileInput">+ Add file<input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/></label></div>
-      {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div><UploadedPdfPreview file={f.file} showAllPages={!["jpg","word","excel"].includes(active)} hideSinglePreview={!["jpg","word","excel"].includes(active)} selectablePages={active==="split"} selectedValue={range} onSelectPage={(page)=>setRange(old=>{const nums=new Set(old.split(",").map(v=>Number(v.trim())).filter(n=>Number.isInteger(n)&&n>0));if(nums.has(page))nums.delete(page);else nums.add(page);return [...nums].sort((a,b)=>a-b).join(",");})}/></div>)}</div>}
-      {active==="split"&&<label className="optionField">Pages to extract <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
+      {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div><UploadedPdfPreview file={f.file} showAllPages={!["jpg","word","excel"].includes(active)} hideSinglePreview={!["jpg","word","excel"].includes(active)} selectablePages={active==="split"||active==="remove"} selectedValue={range} onSelectPage={(page)=>setRange(old=>{const nums=new Set(old.split(",").map(v=>Number(v.trim())).filter(n=>Number.isInteger(n)&&n>0));if(nums.has(page))nums.delete(page);else nums.add(page);return [...nums].sort((a,b)=>a-b).join(",");})}/></div>)}</div>}
+      {(active==="split"||active==="remove")&&<label className="optionField">{active==="split"?"Pages to extract":"Pages to remove"} <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
       {active==="rotate"&&<label className="optionField">Rotate pages by <select value={angle} onChange={e=>setAngle(e.target.value)}><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>}
       <div className="workActions"><button className="primaryBtn runBtn" disabled={busy||files.length===0} onClick={runTool}>{busy?<><span className="spinner"/> Processing…</>:<>Process PDF <ArrowRight size={17}/></>}</button><span className="privacyNote"><LockKeyhole size={14}/> Files are processed locally in your browser</span></div>
       {busy&&<div className="processingStatus" role="status"><span className="spinner blueSpinner"/><div><b>Processing your selected file{files.length>1?"s":""}…</b><small>Your files are being processed in this browser. They are not being uploaded to a server.</small></div></div>}
