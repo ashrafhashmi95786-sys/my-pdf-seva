@@ -224,3 +224,10 @@
 .galleryLoading,.galleryError{padding:14px;color:#64748b;font-size:11px}
 .galleryError{color:#b45309}
 @media(max-width:640px){.mergePageGallery{margin:10px 8px;padding:10px}.mergePageGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.mergePageThumb img{height:145px}}
+
+/* Split PDF: one page gallery with clickable page selection */
+.splitPageGallery .mergePageThumb{width:100%;font:inherit;text-align:center;cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}
+.splitPageGallery .mergePageThumb:hover{border-color:#60a5fa;box-shadow:0 5px 15px #2563eb18}
+.splitPageGallery .mergePageThumb.selectedPage{border:2px solid #2563eb;background:#eaf3ff;box-shadow:0 0 0 2px #bfdbfe}
+.splitPageGallery .mergePageThumb:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+.hideSinglePreview>.uploadedPreviewLabel,.hideSinglePreview>.previewThumb{display:none}
