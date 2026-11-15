@@ -145,7 +145,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ blob: Blob; name: string; type: string; url: string } | null>(null);
   const [message, setMessage] = useState("");
-  const [range, setRange] = useState("1");
+  const [range, setRange] = useState("");
   const [angle, setAngle] = useState("90");
   
   const accept = active === "jpg" ? "image/jpeg,image/png,image/webp" : active === "word" ? ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : active === "excel" ? ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : "application/pdf,.pdf";
