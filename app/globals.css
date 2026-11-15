@@ -244,3 +244,26 @@
 .splitPageGallery .mergePageThumb.selectedPage{border:2px solid #2563eb;background:#eaf3ff;box-shadow:0 0 0 2px #bfdbfe}
 .splitPageGallery .mergePageThumb:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
 .hideSinglePreview>.uploadedPreviewLabel,.hideSinglePreview>.previewThumb{display:none}
+
+
+/* Homepage tool search */
+.toolSectionActions{display:flex;align-items:center;gap:18px}
+.toolSearch{position:relative;z-index:5}
+.toolSearchToggle{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid #dbe7f5;border-radius:10px;background:#fff;color:#1d4ed8;padding:12px 17px;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 5px 16px #1d4ed80c;transition:.2s}
+.toolSearchToggle:hover{border-color:#93c5fd;background:#f5faff;transform:translateY(-1px)}
+.toolSearchPanel{position:absolute;right:0;top:calc(100% + 10px);width:min(420px,calc(100vw - 36px));padding:13px;background:#fff;border:1px solid #dce7f4;border-radius:14px;box-shadow:0 20px 55px #14243b24}
+.toolSearchForm{display:flex;align-items:center;gap:10px;padding:8px 9px 8px 12px;border:1px solid #dbe5f1;border-radius:10px;color:#64748b}
+.toolSearchForm:focus-within{border-color:#60a5fa;box-shadow:0 0 0 3px #dbeafe}
+.toolSearchForm input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#14243b;font-size:13px}
+.toolSearchForm input::placeholder{color:#94a3b8}
+.toolSearchForm button{border:0;border-radius:7px;background:#2563eb;color:white;padding:8px 13px;font-size:12px;font-weight:800;cursor:pointer}
+.toolSearchForm button:disabled{opacity:.4;cursor:not-allowed}
+.toolSearchResults{display:grid;gap:4px;margin-top:9px;max-height:340px;overflow:auto}
+.toolSearchResult{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border-radius:8px;color:#1e3a5f;transition:background .15s}
+.toolSearchResult:hover,.toolSearchResult:focus-visible{background:#eff6ff;outline:0}
+.toolSearchResult span{display:flex;min-width:0;flex-direction:column;gap:3px}
+.toolSearchResult b{font-size:12px}
+.toolSearchResult small,.toolSearchHint,.toolSearchEmpty{font-size:11px;line-height:1.5;color:#718096}
+.toolSearchHint,.toolSearchEmpty{margin:10px 3px 2px}
+.toolSearchEmpty{color:#b45309}
+@media(max-width:640px){.sectionHead{gap:12px}.toolSectionActions{gap:8px;align-items:flex-start}.toolSearchToggle{padding:10px 11px;font-size:11px;white-space:nowrap}.toolSearchPanel{right:-2px;top:calc(100% + 8px)}.toolCount{display:none}}
