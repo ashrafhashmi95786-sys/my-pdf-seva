@@ -3,6 +3,8 @@ import ToolWorkspace from "../../tool-workspace";
 const toolBySlug = {
   "merge-pdf": "merge",
   "split-pdf": "split",
+  "extract-pages": "extract",
+  "organize-pdf": "organize",
   "remove-pages": "remove",
   "pdf-to-jpg": "pdfjpg",
   "html-to-pdf": "html",
