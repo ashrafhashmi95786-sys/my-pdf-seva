@@ -25,7 +25,54 @@ const tools = [
   { id: "pdfword" as ToolId, name: "PDF to Word", desc: "Extract selectable PDF text into DOCX.", icon: FileText, tag: "Convert", slug:"pdf-to-word" },
   { id: "pdfexcel" as ToolId, name: "PDF to Excel", desc: "Extract PDF text into spreadsheet rows.", icon: Files, tag: "Convert", slug:"pdf-to-excel" }
 ];
-function UploadedPdfPreview({ file }: { file: File }) {
+function MergePageGallery({ file }: { file: File }) {
+  const [pages, setPages] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | undefined;
+    (async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        loadingTask = pdfjsLib.getDocument({ data: bytes });
+        const pdf = await loadingTask.promise;
+        const previews: string[] = [];
+        for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+          if (cancelled) return;
+          const page = await pdf.getPage(pageNo);
+          const base = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: Math.min(150 / base.width, 190 / base.height) });
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) continue;
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          await page.render({ canvasContext: context, viewport }).promise;
+          previews.push(canvas.toDataURL("image/jpeg", 0.78));
+        }
+        if (!cancelled) setPages(previews);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not create page previews.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      loadingTask?.destroy();
+    };
+  }, [file]);
+  return <div className="mergePageGallery">
+    <div className="mergePageGalleryHead"><b>Pages in this PDF</b><span>{loading ? "Preparing previews…" : pages.length ? `${pages.length} page${pages.length === 1 ? "" : "s"}` : "Preview unavailable"}</span></div>
+    {error ? <p className="galleryError">Page preview could not be loaded. You can still merge this file.</p> : null}
+    {loading ? <div className="galleryLoading">Loading page thumbnails…</div> : <div className="mergePageGrid">{pages.map((src, index) => <div className="mergePageThumb" key={index}><img src={src} alt={`Page ${index + 1}`}/><span>Page {index + 1}</span></div>)}</div>}
+  </div>;
+}
+
+function UploadedPdfPreview({ file, showAllPages = false }: { file: File; showAllPages?: boolean }) {
   const [url, setUrl] = useState("");
   const [expanded, setExpanded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -79,6 +126,7 @@ function UploadedPdfPreview({ file }: { file: File }) {
       {!isPdf && !isImage ? <span className="documentThumb"><FileText size={42}/><b>{file.name.toLowerCase().endsWith(".docx") ? "WORD DOCUMENT" : "EXCEL WORKBOOK"}</b></span> : null}
       <span className="previewThumbHint">Click to view large</span>
     </button>
+    {showAllPages && isPdf ? <MergePageGallery file={file}/> : null}
     {expanded && <div className="previewModal" role="dialog" aria-modal="true" aria-label={`Preview of ${file.name}`}>
       <div className="previewModalHeader"><div><b>{file.name}</b><small>Large file preview</small></div><button type="button" onClick={() => setExpanded(false)} aria-label="Close preview"><X size={22}/></button></div>
       <div className="previewModalBody">
@@ -264,7 +312,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
             </div>
           </div> : <div className="workspace"><div className="workHead"><div><div className="eyebrow dark">YOUR WORKSPACE</div><h3>{title}</h3><p>{description}</p></div><span className="securePill"><ShieldCheck size={15}/> Secure & private</span></div><div className="workBody">
             <div className="fileSelectToolbar"><span>Selected file preview and processing</span><label className="secondarySelectBtn" htmlFor="fileInput">+ Add file<input id="fileInput" type="file" accept={accept} multiple={active==="merge"||active==="jpg"} onChange={e=>{addFiles(e.target.files);e.currentTarget.value="";}}/></label></div>
-      {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div><UploadedPdfPreview file={f.file}/></div>)}</div>}
+      {files.length>0&&<div className="fileList"><div className="fileListTitle"><b>Selected for processing · {files.length} file{files.length>1?"s":""}</b><button onClick={reset}>Remove all</button></div>{files.map((f,i)=><div className="fileItem" key={f.id}><div className="fileRow"><span className="fileIcon"><FileText size={18}/></span><span className="fileName"><b>{f.file.name}</b><small>{(f.file.size/1024/1024).toFixed(2)} MB · {f.file.type||"Document"}</small></span><span className="fileOrder">{i+1}</span><div className="fileOrderActions"><button className="moveFileBtn" onClick={()=>moveFile(i,-1)} disabled={i===0} aria-label="Move file up"><ChevronUp size={16}/></button><button className="moveFileBtn" onClick={()=>moveFile(i,1)} disabled={i===files.length-1} aria-label="Move file down"><ChevronDown size={16}/></button></div><button className="removeBtn" onClick={()=>removeFile(f.id)} aria-label="Remove file"><X size={17}/></button></div><UploadedPdfPreview file={f.file} showAllPages={active==="merge"}/></div>)}</div>}
       {active==="split"&&<label className="optionField">Pages to extract <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
       {active==="rotate"&&<label className="optionField">Rotate pages by <select value={angle} onChange={e=>setAngle(e.target.value)}><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>}
       <div className="workActions"><button className="primaryBtn runBtn" disabled={busy||files.length===0} onClick={runTool}>{busy?<><span className="spinner"/> Processing…</>:<>Process PDF <ArrowRight size={17}/></>}</button><span className="privacyNote"><LockKeyhole size={14}/> Files are processed locally in your browser</span></div>
