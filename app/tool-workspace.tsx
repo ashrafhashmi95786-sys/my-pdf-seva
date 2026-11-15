@@ -192,7 +192,10 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
         if (files.length !== 1) throw new Error("Please upload one HTML file at a time.");
         const source = await files[0].file.text();
         const parsed = new DOMParser().parseFromString(source, "text/html");
-        parsed.querySelectorAll("script,iframe,object,embed,form,base").forEach(node => node.remove());
+        parsed.querySelectorAll("script,iframe,object,embed,form,base,link[rel=stylesheet]").forEach(node => node.remove());
+        parsed.querySelectorAll("style").forEach(style => { style.textContent = (style.textContent || "").replace(/@import[^;]+;?/gi, "").replace(/url\\((?![\\\x27\\\x22]?data:)[^)]+\\)/gi, "none"); });
+        parsed.querySelectorAll("[style]").forEach(node => { const el = node as HTMLElement; el.style.backgroundImage = "none"; });
+        parsed.querySelectorAll("img").forEach(node => { const image = node as HTMLImageElement; if (image.src && !image.src.startsWith("data:")) image.removeAttribute("src"); });
         parsed.querySelectorAll("*").forEach(node => Array.from(node.attributes).forEach(attribute => {
           const name = attribute.name.toLowerCase();
           if (name.startsWith("on") || ((name === "href" || name === "src" || name === "xlink:href") && /^\\s*javascript:/i.test(attribute.value))) node.removeAttribute(attribute.name);
