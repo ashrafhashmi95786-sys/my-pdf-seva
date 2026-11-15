@@ -267,3 +267,27 @@
 .toolSearchHint,.toolSearchEmpty{margin:10px 3px 2px}
 .toolSearchEmpty{color:#b45309}
 @media(max-width:640px){.sectionHead{gap:12px}.toolSectionActions{gap:8px;align-items:flex-start}.toolSearchToggle{padding:10px 11px;font-size:11px;white-space:nowrap}.toolSearchPanel{right:-2px;top:calc(100% + 8px)}.toolCount{display:none}}
+
+
+/* Interactive Crop PDF page selection */
+.cropEditor{margin:18px 0 20px;padding:16px;border:1px solid #dbe7f5;border-radius:14px;background:#f8fbff}
+.cropEditorTop{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
+.cropEditorTop b,.cropEditorTop small{display:block}
+.cropEditorTop b{font-size:14px;color:#1e3a5f}
+.cropEditorTop small{margin-top:4px;font-size:11px;color:#647b95}
+.cropPageNav{display:flex;align-items:center;gap:9px;white-space:nowrap}
+.cropPageNav span{font-size:11px;font-weight:800;color:#36516f}
+.cropPageNav button,.cropEditorFooter button{border:1px solid #cbdcf0;border-radius:8px;background:#fff;color:#245ca8;padding:7px 11px;font-size:12px;font-weight:800;cursor:pointer}
+.cropPageNav button:disabled,.cropEditorFooter button:disabled{opacity:.35;cursor:not-allowed}
+.cropCanvasStage{display:flex;justify-content:center;padding:12px;border:1px solid #dce6f1;border-radius:11px;background:#eaf0f7;overflow:auto}
+.cropCanvasFrame{position:relative;width:min(100%,860px);margin:auto;line-height:0;touch-action:none;cursor:crosshair;user-select:none}
+.cropCanvasFrame canvas{display:block;width:100%;height:auto;max-width:100%;pointer-events:none;background:#fff;box-shadow:0 5px 18px #14243b20}
+.cropSelectionBox{position:absolute;z-index:2;border:2px solid #1684ff;background:#1684ff20;box-shadow:0 0 0 9999px #10243b55;pointer-events:none}
+.cropSelectionBox span{position:absolute;left:0;top:0;transform:translateY(-100%);padding:5px 7px;border-radius:5px 5px 0 0;background:#1684ff;color:#fff;font-size:10px;font-weight:800;line-height:1.2;white-space:nowrap}
+.cropCanvasLoading{position:absolute;inset:0;display:grid;place-items:center;background:#f8fbffdd;color:#36516f;font-size:12px;font-weight:700;line-height:1.4}
+.cropEditorError{padding:10px;border-radius:8px;background:#fff7ed;color:#9a3412;font-size:12px;margin-bottom:12px}
+.cropEditorFooter{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;color:#58718e;font-size:11px}
+.cropScopeField .optionControls{display:flex;flex-wrap:wrap;gap:18px;margin-top:9px}
+.cropScopeField .optionControls label{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:#36516f}
+.cropScopeField .optionControls input{width:auto;accent-color:#2563eb}
+@media(max-width:640px){.cropEditor{padding:10px}.cropEditorTop{align-items:flex-start;flex-direction:column}.cropPageNav{align-self:flex-end}.cropCanvasStage{padding:6px}.cropEditorFooter{align-items:flex-start;flex-direction:column}.cropScopeField .optionControls{gap:10px;flex-direction:column}}
