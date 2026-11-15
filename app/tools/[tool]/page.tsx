@@ -8,6 +8,7 @@ const toolBySlug = {
   "html-to-pdf": "html",
   "add-page-numbers": "pagenumbers",
   "add-watermark": "watermark",
+  "compress-pdf": "compress",
   "crop-pdf": "crop",
   "rotate-pdf": "rotate",
   "jpg-to-pdf": "jpg",
