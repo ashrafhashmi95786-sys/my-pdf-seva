@@ -262,7 +262,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
           const margin = 24; const x = pageNumberPosition === "left" ? margin : pageNumberPosition === "right" ? Math.max(margin, page.getWidth() - margin - textWidth) : Math.max(margin, (page.getWidth() - textWidth) / 2);
           page.drawText(label, { x, y: 18, size, font, color: rgb(0.32, 0.38, 0.46) });
         });
-        download(await pdf.save(), files[0].file.name.replace(/\\.pdf$/i, "") + "-numbered.pdf");
+        download(await pdf.save(), files[0].file.name.replace(/\.pdf$/i, "") + "-numbered.pdf");
       } else if (active === "watermark") {
         if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
         const text = watermarkText.trim();
@@ -275,7 +275,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
           const textWidth = font.widthOfTextAtSize(text, size);
           page.drawText(text, { x: Math.max(18, (page.getWidth() - textWidth) / 2), y: page.getHeight() / 2, size, font, color: rgb(0.48, 0.55, 0.64), opacity: 0.24, rotate: degrees(35) });
         });
-        download(await pdf.save(), files[0].file.name.replace(/\\.pdf$/i, "") + "-watermarked.pdf");
+        download(await pdf.save(), files[0].file.name.replace(/\.pdf$/i, "") + "-watermarked.pdf");
       } else if (active === "crop") {
         if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
         const marginPercent = Number(cropMargin);
@@ -287,7 +287,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
           if (width - marginX * 2 < 72 || height - marginY * 2 < 72) throw new Error(`Crop margin is too large for page ${index + 1}.`);
           page.setCropBox(marginX, marginY, width - marginX * 2, height - marginY * 2);
         });
-        download(await pdf.save(), files[0].file.name.replace(/\\.pdf$/i, "") + "-cropped.pdf");
+        download(await pdf.save(), files[0].file.name.replace(/\.pdf$/i, "") + "-cropped.pdf");
       } else if (active === "word") {
         const item = files[0];
         const converted = await mammoth.convertToHtml({ arrayBuffer: await item.file.arrayBuffer() });
@@ -366,7 +366,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
           }
           const doc = new Document({ sections: [{ children }] });
           const blob = await Packer.toBlob(doc);
-          saveResult(blob, files[0].file.name.replace(/\\.pdf$/i,"") + ".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+          saveResult(blob, files[0].file.name.replace(/\.pdf$/i,"") + ".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         } else {
           const rows = lines.map(line => {
             const chunks = line.chunks;
@@ -388,7 +388,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
           XLSX.utils.book_append_sheet(book, sheet, "PDF Data");
           const output = XLSX.write(book, { bookType: "xlsx", type: "array" });
           const blob = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-          saveResult(blob, files[0].file.name.replace(/\\.pdf$/i,"") + ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+          saveResult(blob, files[0].file.name.replace(/\.pdf$/i,"") + ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         }
       } else if (active === "merge") {
         if (files.length < 2) throw new Error("Add at least two PDF files to merge.");
