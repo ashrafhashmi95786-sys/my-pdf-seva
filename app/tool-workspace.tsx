@@ -119,6 +119,11 @@ function UploadedPdfPreview({ file, showAllPages = false, hideSinglePreview = fa
       loadingTask?.destroy();
     };
   }, [file, isPdf]);
+  if (hideSinglePreview && isPdf) {
+    return <div className="uploadedPreview splitOnlyPreview">
+      <MergePageGallery file={file} selectable={selectablePages} selectedValue={selectedValue} onSelectPage={onSelectPage}/>
+    </div>;
+  }
   return <div className="uploadedPreview">
     <div className="uploadedPreviewLabel">File preview <span>Click thumbnail to enlarge</span></div>
     <button type="button" className="previewThumb" onClick={() => setExpanded(true)} aria-label={`Open large preview of ${file.name}`}>
