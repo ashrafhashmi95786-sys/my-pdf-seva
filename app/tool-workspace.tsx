@@ -67,7 +67,7 @@ function MergePageGallery({ file, selectable = false, selectedValue = "", onSele
       loadingTask?.destroy();
     };
   }, [file]);
-  return <div className="mergePageGallery">
+  return <div className={`${selectable ? "splitPageGallery " : ""}mergePageGallery`}>
     <div className="mergePageGalleryHead"><b>Pages in this PDF</b><span>{loading ? "Preparing previews…" : pages.length ? `${pages.length} page${pages.length === 1 ? "" : "s"}` : "Preview unavailable"}</span></div>
     {error ? <p className="galleryError">Page preview could not be loaded. You can still continue with this file.</p> : null}
     {loading ? <div className="galleryLoading">Loading page thumbnails…</div> : <div className="mergePageGrid">{pages.map((src, index) => <button type="button" className={`mergePageThumb ${selectable && selectedPages.has(index + 1) ? "selectedPage" : ""}`} key={index} onClick={() => selectable && onSelectPage?.(index + 1)} aria-pressed={selectable ? selectedPages.has(index + 1) : undefined}><img src={src} alt={`Page ${index + 1}`}/><span>Page {index + 1}{selectable && selectedPages.has(index + 1) ? " ✓" : ""}</span></button>)}</div>}
