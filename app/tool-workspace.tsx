@@ -14,9 +14,10 @@ import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 import { UploadCloud, FileText, Files, Scissors, RotateCw, Image as ImageIcon, ShieldCheck, ArrowRight, CheckCircle2, X, Download, LockKeyhole, ChevronUp, ChevronDown } from "lucide-react";
 
-type ToolId = "merge" | "split" | "remove" | "rotate" | "jpg" | "word" | "excel" | "pdfword" | "pdfexcel" | "pdfjpg" | "html" | "pagenumbers" | "watermark" | "crop";
+type ToolId = "compress" | "merge" | "split" | "remove" | "rotate" | "jpg" | "word" | "excel" | "pdfword" | "pdfexcel" | "pdfjpg" | "html" | "pagenumbers" | "watermark" | "crop";
 type PdfFile = { file: File; id: string };
 const tools = [
+  { id: "compress" as ToolId, name: "Compress PDF", desc: "Reduce PDF file size with balanced or strong image compression.", icon: FileText, tag: "Optimize", slug:"compress-pdf" },
   { id: "merge" as ToolId, name: "Merge PDF", desc: "Combine multiple PDFs into one organized file.", icon: Files, tag: "Most popular", slug:"merge-pdf" },
   { id: "split" as ToolId, name: "Split PDF", desc: "Extract selected pages into a new PDF file.", icon: Scissors, tag: "Quick & easy", slug:"split-pdf" },
   { id: "remove" as ToolId, name: "Remove Pages", desc: "Delete unwanted pages from a PDF.", icon: Scissors, tag: "Organize", slug:"remove-pages" },
@@ -277,6 +278,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
   const [watermarkText, setWatermarkText] = useState("My PDF Seva");
   const [cropSelection, setCropSelection] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [cropScope, setCropScope] = useState<"all" | "current">("all");
+  const [compressionQuality, setCompressionQuality] = useState<"balanced" | "strong">("balanced");
   const [cropPage, setCropPage] = useState(1);
   
   const accept = active === "jpg" ? "image/jpeg,image/png,image/webp" : active === "word" ? ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : active === "excel" ? ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : active === "html" ? ".html,.htm,text/html" : "application/pdf,.pdf";
@@ -302,6 +304,7 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
   const runTool = async () => {
     if (!files.length) { setMessage("Upload at least one file to continue."); return; }
     setBusy(true); setMessage("");
+    let completionMessage = "";
     try {
       if (active === "html") {
         if (files.length !== 1) throw new Error("Please upload one HTML file at a time.");
@@ -391,6 +394,52 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
           page.drawText(text, { x: Math.max(18, (page.getWidth() - textWidth) / 2), y: page.getHeight() / 2, size, font, color: rgb(0.48, 0.55, 0.64), opacity: 0.24, rotate: degrees(35) });
         });
         download(await pdf.save(), files[0].file.name.replace(/\.pdf$/i, "") + "-watermarked.pdf");
+
+      } else if (active === "compress") {
+        if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
+        const inputBytes = await files[0].file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(inputBytes) });
+        const sourcePdf = await loadingTask.promise;
+        if (sourcePdf.numPages > 40) {
+          await loadingTask.destroy();
+          throw new Error("For browser stability, Compress PDF currently supports up to 40 pages per file.");
+        }
+        const outputPdf = await PDFDocument.create();
+        const quality = compressionQuality === "balanced" ? 0.72 : 0.48;
+        const maxRenderScale = compressionQuality === "balanced" ? 1.5 : 1.0;
+        try {
+          for (let pageNo = 1; pageNo <= sourcePdf.numPages; pageNo++) {
+            const page = await sourcePdf.getPage(pageNo);
+            const baseViewport = page.getViewport({ scale: 1 });
+            const scale = Math.min(maxRenderScale, 1800 / Math.max(baseViewport.width, baseViewport.height));
+            const viewport = page.getViewport({ scale });
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            if (!context) throw new Error("Could not prepare page " + pageNo + " for compression.");
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            await page.render({ canvasContext: context, viewport }).promise;
+            const imageBlob = await new Promise<Blob>((resolve, reject) => {
+              canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not compress page " + pageNo + ".")), "image/jpeg", quality);
+            });
+            const imageBytes = new Uint8Array(await imageBlob.arrayBuffer());
+            const embedded = await outputPdf.embedJpg(imageBytes);
+            const outputPage = outputPdf.addPage([baseViewport.width, baseViewport.height]);
+            outputPage.drawImage(embedded, { x: 0, y: 0, width: baseViewport.width, height: baseViewport.height });
+            page.cleanup();
+            canvas.width = 0;
+            canvas.height = 0;
+          }
+        } finally {
+          await loadingTask.destroy();
+        }
+        const outputBytes = await outputPdf.save();
+        const originalSize = files[0].file.size;
+        const reduction = Math.round((1 - outputBytes.byteLength / originalSize) * 100);
+        download(outputBytes, files[0].file.name.replace(/\.pdf$/i, "") + "-compressed.pdf");
+        completionMessage = reduction > 0
+          ? "Compression complete. File size reduced by about " + reduction + "%. Note: pages are now images, so text is no longer selectable or searchable."
+          : "The new PDF was created, but its file size did not decrease. Try Strong compression. Pages are images, so text is no longer selectable or searchable.";
       } else if (active === "crop") {
         if (files.length !== 1) throw new Error("Please upload one PDF file at a time.");
         if (!cropSelection || cropSelection.width < 0.015 || cropSelection.height < 0.015) throw new Error("Draw a crop area on the PDF page before processing.");
@@ -553,13 +602,13 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
         for (const item of files) { const bytes = await item.file.arrayBuffer(); const img = item.file.type === "image/png" ? await out.embedPng(bytes) : await out.embedJpg(bytes); const page = out.addPage([img.width, img.height]); page.drawImage(img,{x:0,y:0,width:img.width,height:img.height}); }
         download(await out.save(), "my-pdf-seva-images.pdf");
       }
-      setMessage("Processing complete. Your result is ready to preview and download.");
+      setMessage(completionMessage || "Processing complete. Your result is ready to preview and download.");
     } catch (e) { setMessage(e instanceof Error ? e.message : "Something went wrong. Please check your file and try again."); }
     finally { setBusy(false); }
   };
 
   const tool = tools.find(t=>t.id===active)!;
-  const description = active==="merge" ? "Bring multiple PDF documents together in the order you choose." : active==="split" ? "Choose which pages you want in your new PDF." : active==="remove" ? "Select the pages you want to delete. The remaining pages will be saved as a new PDF." : active==="pdfjpg" ? "Convert each PDF page to a JPG image and download all pages in one ZIP file." : active==="html" ? "Convert a local HTML file into a PDF. External scripts and embedded frames are removed for safety." : active==="pagenumbers" ? "Add sequential page numbers at the bottom of every page." : active==="watermark" ? "Add a light text watermark across every page of your PDF." : active==="crop" ? "Select a custom area on the PDF page, then crop just that page or every page." : active==="rotate" ? "Rotate every page in your PDF to the correct orientation." : active==="jpg" ? "Convert your images into one neat PDF document." : active==="word" ? "Convert a Word DOCX document into a PDF on this device." : active==="excel" ? "Convert every non-empty worksheet in an Excel workbook into PDF tables." : active==="pdfword" ? "Convert selectable text in a PDF into a Word document." : "Extract selectable PDF text into an Excel workbook.";
+  const description = active==="compress" ? "Reduce the size of your PDF using image-based compression. Balanced keeps more detail; Strong creates smaller, lower-quality pages." : active==="merge" ? "Bring multiple PDF documents together in the order you choose." : active==="split" ? "Choose which pages you want in your new PDF." : active==="remove" ? "Select the pages you want to delete. The remaining pages will be saved as a new PDF." : active==="pdfjpg" ? "Convert each PDF page to a JPG image and download all pages in one ZIP file." : active==="html" ? "Convert a local HTML file into a PDF. External scripts and embedded frames are removed for safety." : active==="pagenumbers" ? "Add sequential page numbers at the bottom of every page." : active==="watermark" ? "Add a light text watermark across every page of your PDF." : active==="crop" ? "Select a custom area on the PDF page, then crop just that page or every page." : active==="rotate" ? "Rotate every page in your PDF to the correct orientation." : active==="jpg" ? "Convert your images into one neat PDF document." : active==="word" ? "Convert a Word DOCX document into a PDF on this device." : active==="excel" ? "Convert every non-empty worksheet in an Excel workbook into PDF tables." : active==="pdfword" ? "Convert selectable text in a PDF into a Word document." : "Extract selectable PDF text into an Excel workbook.";
   return <main className="toolPage">
     <div className="topbar"><div className="container topinner"><Link className="brand" href="/"><span className="brandmark"><FileText size={22}/></span><span>My PDF <b>Seva</b></span></Link><Link className="navCta" href="/#tools">All tools <ArrowRight size={16}/></Link></div></div>
     <section className="toolPageSection"><div className="container">
@@ -578,9 +627,10 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
       {(active==="split"||active==="remove")&&<label className="optionField">{active==="split"?"Pages to extract":"Pages to remove"} <input value={range} onChange={e=>setRange(e.target.value)} placeholder="Example: 1-3, 5, 8-10"/></label>}
       {active==="rotate"&&<label className="optionField">Rotate pages by <select value={angle} onChange={e=>setAngle(e.target.value)}><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>}
       {active==="pagenumbers"&&<div className="optionField">Page numbering <div className="optionControls"><label>Start from <input type="number" min="1" max="999999" value={pageNumberStart} onChange={e=>setPageNumberStart(e.target.value)}/></label><label>Position <select value={pageNumberPosition} onChange={e=>setPageNumberPosition(e.target.value)}><option value="left">Bottom left</option><option value="center">Bottom center</option><option value="right">Bottom right</option></select></label></div></div>}
+      {active==="compress"&&<div className="optionField compressionOptions">Compression level <div className="optionControls"><label><input type="radio" name="compressionQuality" value="balanced" checked={compressionQuality==="balanced"} onChange={()=>setCompressionQuality("balanced")}/> Recommended · Balanced quality</label><label><input type="radio" name="compressionQuality" value="strong" checked={compressionQuality==="strong"} onChange={()=>setCompressionQuality("strong")}/> Strong · Smaller file</label></div><small>Compression converts PDF pages to JPG images. Text will not remain selectable or searchable. Your original file is unchanged.</small></div>}
       {active==="watermark"&&<label className="optionField">Watermark text <input value={watermarkText} maxLength={80} onChange={e=>setWatermarkText(e.target.value)} placeholder="Enter watermark text"/></label>}
 
-      <div className="workActions"><button className="primaryBtn runBtn" disabled={busy||files.length===0} onClick={runTool}>{busy?<><span className="spinner"/> Processing…</>:<>{active==="crop"?"Crop PDF":"Process PDF"} <ArrowRight size={17}/></>}</button><span className="privacyNote"><LockKeyhole size={14}/> Files are processed locally in your browser</span></div>
+      <div className="workActions"><button className="primaryBtn runBtn" disabled={busy||files.length===0} onClick={runTool}>{busy?<><span className="spinner"/> Processing…</>:<>{active==="crop"?"Crop PDF":active==="compress"?"Compress PDF":"Process PDF"} <ArrowRight size={17}/></>}</button><span className="privacyNote"><LockKeyhole size={14}/> Files are processed locally in your browser</span></div>
       {busy&&<div className="processingStatus" role="status"><span className="spinner blueSpinner"/><div><b>Processing your selected file{files.length>1?"s":""}…</b><small>Your files are being processed in this browser. They are not being uploaded to a server.</small></div></div>}
       {message&&<div className={result?"successMsg":"errorMsg"} role="status">{message}</div>}
       {result&&<div className="resultPanel"><div className="resultTop"><span className="resultIcon"><CheckCircle2 size={20}/></span><div className="resultDetails"><b>Your result is ready</b><small>{result.name} · {(result.blob.size/1024).toFixed(1)} KB</small></div><button className="downloadResult" onClick={()=>{const a=document.createElement("a");a.href=result.url;a.download=result.name;a.click();}}><Download size={16}/> Download</button></div>{result.type==="application/pdf"?<div className="previewWrap"><div className="previewHeading"><FileText size={15}/> {active==="merge"?"Final merged PDF preview":"Generated PDF preview"}</div><iframe title="Generated PDF preview" src={result.url} className="pdfPreview"/></div>:<div className="nonPdfPreview"><FileText size={20}/><span>{result.type==="application/zip"?"Your JPG pages are packed into a ZIP archive. Download and extract it to view every page.":"Preview is not available for this file type. Download the generated file to open it."}</span></div>}</div>}
