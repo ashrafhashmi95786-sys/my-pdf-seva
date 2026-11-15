@@ -275,7 +275,9 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
   const [pageNumberStart, setPageNumberStart] = useState("1");
   const [pageNumberPosition, setPageNumberPosition] = useState("center");
   const [watermarkText, setWatermarkText] = useState("My PDF Seva");
-  const [cropSelection, setCropSelection] = useState<{ left: number; top: number; width: number; height: number } | null>(null);\n  const [cropScope, setCropScope] = useState<"all" | "current">("all");\n  const [cropPage, setCropPage] = useState(1);
+  const [cropSelection, setCropSelection] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [cropScope, setCropScope] = useState<"all" | "current">("all");
+  const [cropPage, setCropPage] = useState(1);
   
   const accept = active === "jpg" ? "image/jpeg,image/png,image/webp" : active === "word" ? ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : active === "excel" ? ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : active === "html" ? ".html,.htm,text/html" : "application/pdf,.pdf";
   const title = tools.find(t => t.id === active)?.name ?? "PDF tools";
@@ -284,7 +286,8 @@ export default function ToolWorkspace({ initialTool }: { initialTool: ToolId }) 
     const incoming = Array.from(list).filter(f => active === "jpg" ? ["image/jpeg","image/png","image/webp"].includes(f.type) : active === "word" ? f.name.toLowerCase().endsWith(".docx") : active === "excel" ? /\.(xlsx|xls)$/i.test(f.name) : active === "html" ? /\.html?$/i.test(f.name) : f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
     if (!incoming.length) { setMessage(active === "jpg" ? "Please choose JPG, PNG or WebP images." : active === "word" ? "Please choose a .docx Word document." : active === "excel" ? "Please choose an .xlsx or .xls Excel workbook." : active === "html" ? "Please choose an .html or .htm file." : "Please choose a valid PDF file."); return; }
     if (incoming.some(f => f.size > 30 * 1024 * 1024)) { setMessage("Each file must be 30 MB or smaller."); return; }
-    if (active === "crop") { setCropSelection(null); setCropPage(1); }\n    setFiles(old => [...old, ...incoming.map(file => ({ file, id: crypto.randomUUID() }))]);
+    if (active === "crop") { setCropSelection(null); setCropPage(1); }
+    setFiles(old => [...old, ...incoming.map(file => ({ file, id: crypto.randomUUID() }))]);
     setShowWorkspace(true);
     setMessage("");
   }, [active]);
