@@ -20,7 +20,8 @@
     "react-dom": "^19.0.0",
     "xlsx": "^0.18.5",
     "docx": "^9.5.1",
-    "pdfjs-dist": "^4.10.38"
+    "pdfjs-dist": "^4.10.38",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
