@@ -231,3 +231,10 @@
 .splitPageGallery .mergePageThumb.selectedPage{border:2px solid #2563eb;background:#eaf3ff;box-shadow:0 0 0 2px #bfdbfe}
 .splitPageGallery .mergePageThumb:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
 .hideSinglePreview>.uploadedPreviewLabel,.hideSinglePreview>.previewThumb{display:none}
+
+/* Split PDF page picker: hide duplicate file preview and enable page selection */
+.splitPageGallery .mergePageThumb{width:100%;font:inherit;text-align:center;cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}
+.splitPageGallery .mergePageThumb:hover{border-color:#60a5fa;box-shadow:0 5px 15px #2563eb18}
+.splitPageGallery .mergePageThumb.selectedPage{border:2px solid #2563eb;background:#eaf3ff;box-shadow:0 0 0 2px #bfdbfe}
+.splitPageGallery .mergePageThumb:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+.hideSinglePreview>.uploadedPreviewLabel,.hideSinglePreview>.previewThumb{display:none}
