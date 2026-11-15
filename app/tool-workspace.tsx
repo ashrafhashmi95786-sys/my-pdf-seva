@@ -25,7 +25,7 @@ const tools = [
   { id: "pdfword" as ToolId, name: "PDF to Word", desc: "Extract selectable PDF text into DOCX.", icon: FileText, tag: "Convert", slug:"pdf-to-word" },
   { id: "pdfexcel" as ToolId, name: "PDF to Excel", desc: "Extract PDF text into spreadsheet rows.", icon: Files, tag: "Convert", slug:"pdf-to-excel" }
 ];
-function MergePageGallery({ file }: { file: File }) {
+function MergePageGallery({ file, selectable = false, selectedValue = "", onSelectPage }: { file: File; selectable?: boolean; selectedValue?: string; onSelectPage?: (page: number) => void }) {
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -68,11 +68,11 @@ function MergePageGallery({ file }: { file: File }) {
   return <div className="mergePageGallery">
     <div className="mergePageGalleryHead"><b>Pages in this PDF</b><span>{loading ? "Preparing previews…" : pages.length ? `${pages.length} page${pages.length === 1 ? "" : "s"}` : "Preview unavailable"}</span></div>
     {error ? <p className="galleryError">Page preview could not be loaded. You can still continue with this file.</p> : null}
-    {loading ? <div className="galleryLoading">Loading page thumbnails…</div> : <div className="mergePageGrid">{pages.map((src, index) => <div className="mergePageThumb" key={index}><img src={src} alt={`Page ${index + 1}`}/><span>Page {index + 1}</span></div>)}</div>}
+    {loading ? <div className="galleryLoading">Loading page thumbnails…</div> : <div className="mergePageGrid">{pages.map((src, index) => <button type="button" className={`mergePageThumb ${selectable && selectedPages.has(index + 1) ? "selectedPage" : ""}`} key={index} onClick={() => selectable && onSelectPage?.(index + 1)} aria-pressed={selectable ? selectedPages.has(index + 1) : undefined}><img src={src} alt={`Page ${index + 1}`}/><span>Page {index + 1}{selectable && selectedPages.has(index + 1) ? " ✓" : ""}</span></button>)}</div>}
   </div>;
 }
 
-function UploadedPdfPreview({ file, showAllPages = false }: { file: File; showAllPages?: boolean }) {
+function UploadedPdfPreview({ file, showAllPages = false, hideSinglePreview = false, selectablePages = false, selectedValue = "", onSelectPage }: { file: File; showAllPages?: boolean; hideSinglePreview?: boolean; selectablePages?: boolean; selectedValue?: string; onSelectPage?: (page: number) => void }) {
   const [url, setUrl] = useState("");
   const [expanded, setExpanded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
